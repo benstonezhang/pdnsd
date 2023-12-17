@@ -5,6 +5,7 @@
    and doesn't require (f)lex or yacc/bison.
 
    Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2011 Paul A. Rombouts.
+   Copyright (C) 2023 Benstone Zhang.
 
   This file is part of the pdnsd package.
 
@@ -295,6 +296,7 @@ static const char *reject_add(servparm_t *serv, const char *ipstr);
 static void check_localaddrs(servparm_t *serv);
 static int read_resolv_conf(const char *fn, atup_array *ata, char **errstr);
 static const char *slist_add(slist_array *sla, const char *nm, unsigned int len, int tp);
+static int read_cast_list(const char *strbuf, slist_array *ata, char **errstr, int op);
 #define include_list_add(sla,nm,len) slist_add(sla,nm,len,C_INCLUDED)
 #define exclude_list_add(sla,nm,len) slist_add(sla,nm,len,C_EXCLUDED)
 static const char *zone_add(zone_array *za, const char *zone, unsigned int len);
@@ -1153,8 +1155,32 @@ int confparse(FILE* in, char *prestr, globparm_t *global, servparm_array *server
 	    SCAN_STRING_LIST(&server.alist,p,strbuf,len,include_list_add)
 	    break;
 
+	  case INCLUDE_FILE:
+	    SCAN_STRING(p,strbuf,len);
+	    {
+	      char *errmsg;
+	      if (!read_cast_list(strbuf,&server.alist,&errmsg,C_INCLUDED)) {
+	        if(errmsg) {REPORT_ERROR(errmsg); free(errmsg);}
+	        else *errstr=NULL;
+	        PARSERROR;
+	      }
+	    }
+	    break;
+
 	  case EXCLUDE:
 	    SCAN_STRING_LIST(&server.alist,p,strbuf,len,exclude_list_add)
+	    break;
+
+	  case EXCLUDE_FILE:
+	    SCAN_STRING(p,strbuf,len);
+	    {
+	      char *errmsg;
+	      if (!read_cast_list(strbuf,&server.alist,&errmsg,C_EXCLUDED)) {
+	          if(errmsg) {REPORT_ERROR(errmsg); free(errmsg);}
+	          else *errstr=NULL;
+	          PARSERROR;
+	     }
+	    }
 	    break;
 
 	  case REJECTLIST:
@@ -2116,3 +2142,54 @@ static const char *zone_add(zone_array *za, const char *zone, unsigned int len)
   return NULL;
 }
 
+/* Read the include/exclude domain/host list from file. */
+static int read_cast_list(const char *fn, slist_array *ata, char **errstr,
+                          int op)
+{
+  int rv=0;
+  FILE *f;
+  char *buf;
+  size_t buflen=128;
+  unsigned linenr=0;
+  const char *_err;
+
+  if (!(f=fopen(fn,"r"))) {
+    if(asprintf(errstr, "Failed to open %s: %s", fn, strerror(errno))<0)
+      *errstr=NULL;
+    return 0;
+  }
+  buf=malloc(buflen);
+  if(!buf) {
+    *errstr=NULL;
+    goto fclose_return;
+  }
+  while(getline(&buf,&buflen,f)>=0) {
+    size_t len;
+    char *p,*ps;
+    ++linenr;
+    p=buf;
+    for(;; ++p) {
+      if(!*p) goto nextline;
+      if(!isspace(*p)) break;
+    }
+    ps=p;
+    do {
+      if(!*++p) goto nextline;
+    } while(!isspace(*p));
+    len=p-ps;
+    if((_err=slist_add(ata,ps,len,op))) {
+      report_errorf("include file", linenr, "%s", _err);
+      goto nextline;
+    }
+    nextline:;
+  }
+  if (feof(f))
+    rv=1;
+  else if(asprintf(errstr, "Failed to read %s: %s", fn, strerror(errno))<0)
+    *errstr=NULL;
+cleanup_return:
+  free(buf);
+fclose_return:
+  fclose(f);
+  return rv;
+}
