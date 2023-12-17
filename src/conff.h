@@ -32,7 +32,11 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#if (TARGET==TARGET_LINUX)
+#include <linux/if.h>
+#else
 #include <net/if.h>
+#endif
 #include "ipvers.h"
 #include "list.h"
 

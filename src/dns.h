@@ -27,7 +27,11 @@
 #include <config.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#if (TARGET==TARGET_LINUX)
+#include <linux/if.h>
+#else
 #include <net/if.h>
+#endif
 #include <sys/types.h>
 #include <inttypes.h>
 #include "rr_types.h"
