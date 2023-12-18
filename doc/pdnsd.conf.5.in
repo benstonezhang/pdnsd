@@ -922,6 +922,17 @@ one line, e.g.:
 include=".foo",".bar",".my.dom";
 
 .TP
+.B include_file=\fIstring\fP;
+The string specifies a file name. The file should have "include" entries for every line,
+e.g.:
+
+\&.foo
+.br
+\&.bar
+.br
+\&.my.dom
+
+.TP
 .B exclude=\fIstring\fP;
 This option adds an entry to the exclusion/inclusion list. If a domain matches
 the name given as string, the server is not queried if this was the first matching rule
@@ -940,6 +951,17 @@ pdnsd now also accepts a more compact notation for adding several "exclude" entr
 one line, e.g.:
 
 exclude=".foo",".bar",".my.dom";
+
+.TP
+.B exclude_file=\fIstring\fP;
+The string specifies a file name. The file should have "exclude" entries for every line,
+e.g.:
+
+\&.foo
+.br
+\&.bar
+.br
+\&.my.dom
 
 
 .SS rr Section
