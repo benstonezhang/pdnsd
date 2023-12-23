@@ -53,17 +53,8 @@
 #include "debug.h"
 
 
-#if defined(NO_TCP_QUERIES) && M_PRESET!=UDP_ONLY
-# error "You may not define NO_TCP_QUERIES when M_PRESET is not set to UDP_ONLY"
-#endif
-#if defined(NO_UDP_QUERIES) && M_PRESET!=TCP_ONLY
-# error "You may not define NO_UDP_QUERIES when M_PRESET is not set to TCP_ONLY"
-#endif
 #if defined(NO_TCP_QUERIES) && defined(ENABLE_TLS_QUERIES)
 # error "You may not define NO_TCP_QUERIES when ENABLE_TLS_QUERIES is set"
-#endif
-#if (!defined(ENABLE_TLS_QUERIES)) && M_PRESET==C_TLS
-# error "You must define ENABLE_TLS_QUERIES when M_PRESET is set to TLS"
 #endif
 
 /* data type to hold lists of IP addresses (both v4 and v6)

@@ -1933,7 +1933,9 @@ static void *tcp_answer_thread(void *csock)
 						       olen>=3?((dns_hdr_t*)buf)->opcode:OP_QUERY,
 						       RC_FORMAT,
 						       &err.hdr);
+#ifndef NO_TCP_QUERIES
 					err.len=htons(sizeof(dns_hdr_t));
+#endif
 					write_all(sock,&err,sizeof(err)); /* error anyway. */
 				}
 				pthread_exit(NULL); /* buf freed and socket closed by cleanup handlers */
@@ -1952,7 +1954,9 @@ static void *tcp_answer_thread(void *csock)
 		pthread_cleanup_push(free,resp);
 		{
 			int err; size_t rsize;
+#ifndef NO_TCP_QUERIES
 			resp->len=htons(nlen);
+#endif
 			rsize=dnsmsghdroffset+nlen;
 			if ((err=write_all(sock,resp,rsize))!=rsize) {
 				DEBUG_MSG("Error while writing to TCP client: %s\n",err==-1?strerror(errno):"unknown error");
