@@ -11,6 +11,7 @@ target="autodetect"
 cachedir="/var/cache/$package"
 ipv4_default=1
 have_ipv4="yes"
+have_ipv6="no"
 #newrrs="yes"
 query_m="udponly"
 have_tcp_server="yes"
@@ -20,6 +21,7 @@ def_id="nobody"
 #have_rcsids="no"
 udp_queries="yes"
 tcp_queries="yes"
+tls_queries="no"
 tempdir="/tmp"
 randomdev=default
 freebsd_pthread="4"
@@ -85,6 +87,7 @@ test $have_ipv4 = "yes" && AC_DEFINE(ENABLE_IPV4)
 AC_ARG_ENABLE(ipv6,
 [  --enable-ipv6               Enable IPv6 networking support],
 [ if test $enableval = "yes" ; then
+    have_ipv6=$enableval
     AC_DEFINE(ENABLE_IPV6)
     if test $have_ipv4 != "yes" ; then
       ipv4_default=0
@@ -119,9 +122,13 @@ AC_ARG_ENABLE(tcp-queries,
 [  --disable-tcp-queries       Disable tcp as query method.],
   tcp_queries=$enableval)
 
+AC_ARG_ENABLE(tls-queries,
+[  --enable-tls-queries        Enable tls as query method.],
+  tls_queries=$enableval)
+
 AC_ARG_WITH(query-method,
 [  --with-query-method=qm      Specify the query method (default=udponly;
-                              others: tcponly, tcpudp, udptcp)],
+                               others: tcponly, tcpudp, udptcp, tls)],
   query_m=$withval)
 case $query_m in
   udponly|UDPonly)
@@ -142,13 +149,19 @@ case $query_m in
     udp_queries=yes;
     tcp_queries=yes;
     ;;
+  tls)
+    AC_DEFINE(M_PRESET, C_TLS)
+    tcp_queries=yes;
+    tls_queries=yes;
+    ;;
   *)
-    AC_MSG_ERROR([--with-query-method must have udponly, tcponly, tcpudp or udptcp as parameter.])
+    AC_MSG_ERROR([--with-query-method must have udponly, tcponly, tcpudp, udptcp or tls as parameter.])
     ;;
 esac
 
 test $udp_queries != "yes" && AC_DEFINE(NO_UDP_QUERIES)
 test $tcp_queries != "yes" && AC_DEFINE(NO_TCP_QUERIES)
+test $tls_queries = "yes" && AC_DEFINE(ENABLE_TLS_QUERIES)
 
 AC_ARG_ENABLE(tcp-server,
 [  --disable-tcp-server        Disable the TCP serving ability of pdnsd],
@@ -294,6 +307,9 @@ if test "$target" = "autodetect" ; then
       AC_MSG_RESULT("${uname_sys}")
       AC_DEFINE(TARGET, TARGET_BSD)
       target="BSD"
+      if test "${uname_sys}" = Darwin -a "$have_ipv6" = "yes"; then
+        CFLAGS="$CFLAGS -D__APPLE_USE_RFC_3542"
+      fi
       ;;
     CYGWIN*)
       AC_MSG_RESULT("${uname_sys}")
@@ -519,6 +535,11 @@ AC_CHECK_FUNCS(nanosleep gettimeofday mkfifo select socket strerror uname snprin
 		AC_MSG_ERROR([One of the functions required for pdnsd were not found.]))
 AC_CHECK_FUNCS(poll, true, AC_DEFINE(NO_POLL))
 AC_CHECK_FUNCS(strdup strndup stpcpy stpncpy strlcpy mempcpy getline asprintf vasprintf getpwnam_r inet_ntop inet_pton)
+
+if test $tls_queries = "yes"; then
+    AC_SEARCH_LIBS(OPENSSL_init,crypto)
+    AC_SEARCH_LIBS(OPENSSL_init_ssl,ssl,,,-lcrypto)
+fi
 
 AC_OUTPUT([
 pdnsd.spec

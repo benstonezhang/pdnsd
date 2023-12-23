@@ -2,6 +2,7 @@
 
    Copyright (C) 2000, 2001 Thomas Moestl
    Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2011, 2012 Paul A. Rombouts
+   Copyright (C) 2023 Benstone Zhang
 
   This file is part of the pdnsd package.
 
@@ -33,6 +34,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
+#ifdef ENABLE_TLS_QUERIES
+#include <netinet/tcp.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
 #include "list.h"
 #include "consts.h"
 #include "ipvers.h"
@@ -52,6 +58,12 @@
 #endif
 #if defined(NO_UDP_QUERIES) && M_PRESET!=TCP_ONLY
 # error "You may not define NO_UDP_QUERIES when M_PRESET is not set to TCP_ONLY"
+#endif
+#if defined(NO_TCP_QUERIES) && defined(ENABLE_TLS_QUERIES)
+# error "You may not define NO_TCP_QUERIES when ENABLE_TLS_QUERIES is set"
+#endif
+#if (!defined(ENABLE_TLS_QUERIES)) && M_PRESET==C_TLS
+# error "You must define ENABLE_TLS_QUERIES when M_PRESET is set to TLS"
 #endif
 
 /* data type to hold lists of IP addresses (both v4 and v6)
@@ -102,6 +114,9 @@ typedef struct {
 	rejectlist_t        *rejectlist;
 	/* internal state for p_exec_query */
 	int                 sock;
+#ifdef ENABLE_TLS_QUERIES
+	SSL 		    *ssl;
+#endif
 #if 0
 	dns_cent_t          nent;
 	dns_cent_t          servent;
@@ -116,6 +131,9 @@ typedef struct {
 	unsigned short      myrid;
 	int                 s_errno;
 	unsigned short      qtype;
+#ifdef ENABLE_TLS_QUERIES
+	char 		    ssl_err[256];
+#endif
 } query_stat_t;
 typedef DYNAMIC_ARRAY(query_stat_t) *query_stat_array;
 
@@ -137,20 +155,22 @@ typedef DYNAMIC_ARRAY(query_stat_t) *query_stat_array;
 #define QS_INITIAL       0  /* This is the initial state. Set this before starting. */
 
 #define QS_TCPINITIAL    1  /* Start a TCP query. */
-#define QS_TCPWRITE      2  /* Waiting to write data. */
-#define QS_TCPREAD       3  /* Waiting to read data. */
+#define QS_TLSINITIAL    2  /* Start a TLS session. */
+#define QS_TLSCONNECT    3  /* Waiting to connect */
+#define QS_TCPWRITE      4  /* Waiting to write data. */
+#define QS_TCPREAD       5  /* Waiting to read data. */
 
-#define QS_UDPINITIAL    4  /* Start a UDP query */
-#define QS_UDPRECEIVE    5  /* UDP query transmitted, waiting for response. */
+#define QS_UDPINITIAL    6  /* Start a UDP query */
+#define QS_UDPRECEIVE    7  /* UDP query transmitted, waiting for response. */
 
-#define QS_QUERY_CASES   case QS_TCPINITIAL: case QS_TCPWRITE: case QS_TCPREAD: case QS_UDPINITIAL: case QS_UDPRECEIVE
+#define QS_QUERY_CASES   case QS_TCPINITIAL: case QS_TLSINITIAL: case QS_TLSCONNECT: case QS_TCPWRITE: case QS_TCPREAD: case QS_UDPINITIAL: case QS_UDPRECEIVE
 
-#define QS_CANCELED      7  /* query was started, but canceled before completion */
-#define QS_DONE          8  /* done, resources freed, result is in stat_t */
+#define QS_CANCELED      8  /* query was started, but canceled before completion */
+#define QS_DONE          9  /* done, resources freed, result is in stat_t */
 
 
 /* Events to be polled/selected for */
-#define QS_WRITE_CASES case QS_TCPWRITE
+#define QS_WRITE_CASES case QS_TLSINITIAL: case QS_TLSCONNECT: case QS_TCPWRITE
 #define QS_READ_CASES  case QS_TCPREAD: case QS_UDPRECEIVE
 
 /*
@@ -216,7 +236,7 @@ static int rr_to_cache(dns_cent_array *centa, unsigned char *oname, int tp, time
 }
 
 /*
- * Takes a pointer (ptr) to a buffer with recnum rrs,decodes them and enters
+ * Takes a pointer (ptr) to a buffer with recnum rrs, decodes them and enters
  * them into an array of cache entries. *ptr is modified to point after the last
  * rr, and *lcnt is decremented by the size of the rrs.
  *
@@ -848,34 +868,34 @@ inline static void switch_to_tcp(query_stat_t *st)
  * have returned -1 (which means "call again") as last step of the last state handling. */
 static int p_query_sm(query_stat_t *st)
 {
-	int retval=RC_SERVFAIL,rv;
+	int retval=RC_SERVFAIL,rv, err;
 
 #if !defined(NO_TCP_QUERIES) && !defined(NO_UDP_QUERIES)
  tryagain:
 #endif
-	switch (st->state){
+	switch (st->state) {
 		/* TCP query code */
 #ifndef NO_TCP_QUERIES
 	case QS_TCPINITIAL:
+#ifdef ENABLE_TLS_QUERIES
+		st->ssl=NULL;
+#endif
 		if ((st->sock=socket(PDNSD_PF_INET,SOCK_STREAM,IPPROTO_TCP))==-1) {
 			DEBUG_MSG("Could not open socket: %s\n", strerror(errno));
 			break;
 		}
-		/* sin4 or sin6 is intialized, hopefully. */
+		/* sin4 or sin6 is initialized, hopefully. */
 
 		/* maybe bind */
-		if (!bind_socket(st->sock)) {
-			close(st->sock);
+		if (!bind_socket(st->sock))
 			break;
-		}
 
-		/* transmit query by tcp*/
+		/* transmit query by tcp */
 		/* make the socket non-blocking */
 		{
 			int oldflags = fcntl(st->sock, F_GETFL, 0);
 			if (oldflags == -1 || fcntl(st->sock,F_SETFL,oldflags|O_NONBLOCK)==-1) {
 				DEBUG_PDNSDA_MSG("fcntl error while trying to make socket to %s non-blocking: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(errno));
-				close(st->sock);
 				break;
 			}
  		}
@@ -885,13 +905,17 @@ static int p_query_sm(query_stat_t *st)
 #endif
 		if (connect(st->sock,SOCK_ADDR(st),SIN_LEN)==-1) {
 			if (errno==EINPROGRESS || errno==EPIPE) {
+#ifdef ENABLE_TLS_QUERIES
+				if (global.query_method==C_TLS)
+					st->state=QS_TLSINITIAL;
+				else
+#endif
 				st->state=QS_TCPWRITE;
 				/* st->event=QEV_WRITE; */ /* wait for writability; the connect is then done */
 				return -1;
 			} else if (errno==ECONNREFUSED) {
 				st->s_errno=errno;
 				DEBUG_PDNSDA_MSG("TCP connection refused by %s\n", PDNSDA2STR(PDNSD_A(st)));
-				close(st->sock);
 				goto tcp_failed; /* We may want to try again using UDP */
 			} else {
 				/* Since immediate connect() errors do not cost any time, we do not try to switch the
@@ -914,10 +938,51 @@ static int p_query_sm(query_stat_t *st)
 				}
 #endif
 				DEBUG_PDNSDA_MSG("Error while connecting to %s: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(errno));
-				close(st->sock);
 				break;
 			}
 		}
+#ifdef ENABLE_TLS_QUERIES
+		if (global.query_method==C_TLS)
+			st->state=QS_TLSINITIAL;
+	case QS_TLSINITIAL:
+		if (global.query_method==C_TLS) {
+			// Disable the Nagle algorithm so that small packets get sent immediately
+			char opt_char=1;
+			setsockopt(st->sock,IPPROTO_TCP,TCP_NODELAY,&opt_char,sizeof(opt_char));
+
+			DEBUG_MSG("Initialize SSL context\n");
+			st->ssl=SSL_new(global.ssl_ctx);
+			if(st->ssl==NULL) {
+				ERR_error_string_n(ERR_get_error(),st->ssl_err,sizeof(st->ssl_err));
+				DEBUG_MSG("TLS context Initialization failed: %s\n",st->ssl_err);
+				break;
+			}
+			err=SSL_set_fd(st->ssl,st->sock);
+			if (err!=1) {
+				ERR_error_string_n(SSL_get_error(st->ssl,err),st->ssl_err,sizeof(st->ssl_err));
+				DEBUG_MSG("TLS set socket error: %s\n",st->ssl_err);
+				break;
+			}
+			st->state=QS_TLSCONNECT;
+		}
+	case QS_TLSCONNECT:
+		if (global.query_method==C_TLS) {
+			err=SSL_connect(st->ssl);
+			if (err!=1) {
+				err=SSL_get_error(st->ssl,err);
+				if ((err==SSL_ERROR_WANT_READ)||(err==SSL_ERROR_WANT_WRITE)) {
+					st->state=QS_TCPWRITE;
+					return -1;
+				}
+				if (err==SSL_ERROR_WANT_CONNECT) {
+					return -1;
+				}
+				ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
+				DEBUG_PDNSDA_MSG("TLS connection failed by %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+				break;
+			}
+		}
+#endif
 		st->state=QS_TCPWRITE;
 		/* st->event=QEV_WRITE; */
 		/* fall through in case of not EINPROGRESS */
@@ -925,22 +990,40 @@ static int p_query_sm(query_stat_t *st)
 		{
 			int rem= dnsmsghdroffset + st->transl - st->iolen;
 			if(rem>0) {
-				rv=write(st->sock,((unsigned char*)st->msg)+st->iolen,rem);
-				if(rv==-1) {
-					if(errno==EWOULDBLOCK)
-						return -1;
-					st->s_errno=errno;
-					close(st->sock);
-					if (st->iolen==0 &&
-					    (st->s_errno==ECONNREFUSED || st->s_errno==ECONNRESET ||
-					     st->s_errno==EPIPE))
-					{
-						/* This error may be delayed from connect() */
-						DEBUG_PDNSDA_MSG("TCP connection to %s failed: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(st->s_errno));
-						goto tcp_failed; /* We may want to try again using UDP */
+#ifdef ENABLE_TLS_QUERIES
+				if (global.query_method==C_TLS) {
+					rv=SSL_write(st->ssl,((unsigned char *)st->msg)+st->iolen,rem);
+					if(rv<=0) {
+						err=SSL_get_error(st->ssl,rv);
+						if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
+							return -1;
+						ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
+						DEBUG_PDNSDA_MSG("Error while sending TLS data to %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+						break;
 					}
-					DEBUG_PDNSDA_MSG("Error while sending data to %s: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(st->s_errno));
-					break;
+				}
+				else
+#endif
+				{
+					rv=write(st->sock,((unsigned char *)st->msg)+st->iolen,rem);
+					if(rv==-1) {
+						if(errno==EWOULDBLOCK)
+							return -1;
+						st->s_errno=errno;
+						close(st->sock);
+						st->sock=-1;
+						if(st->iolen==0&&
+						   (st->s_errno==ECONNREFUSED||st->s_errno==ECONNRESET||
+						    st->s_errno==EPIPE)) {
+							/* This error may be delayed from connect() */
+							DEBUG_PDNSDA_MSG("TCP connection to %s failed: %s\n",
+									 PDNSDA2STR(PDNSD_A(st)),strerror(st->s_errno));
+							goto tcp_failed; /* We may want to try again using UDP */
+						}
+						DEBUG_PDNSDA_MSG("Error while sending data to %s: %s\n",
+								 PDNSDA2STR(PDNSD_A(st)),strerror(st->s_errno));
+						break;
+					}
 				}
 				st->iolen += rv;
 				if(rv<rem)
@@ -954,48 +1037,86 @@ static int p_query_sm(query_stat_t *st)
 	case QS_TCPREAD:
 	        if(st->iolen==0) {
 			uint16_t recvl_net;
-			rv=read(st->sock,&recvl_net,sizeof(recvl_net));
-			if(rv==-1 && errno==EWOULDBLOCK)
-				return -1;
-			if(rv!=sizeof(recvl_net))
-				goto error_receiv_data;
+#ifdef ENABLE_TLS_QUERIES
+			if (global.query_method==C_TLS) {
+				rv=SSL_read(st->ssl,&recvl_net,sizeof(recvl_net));
+				if (rv<=0) {
+					err=SSL_get_error(st->ssl,rv);
+					if (err==SSL_ERROR_WANT_READ)
+						return -1;
+					ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
+					DEBUG_PDNSDA_MSG("Error while reading TLS data from %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+					break;
+				}
+			}
+			else
+#endif
+			{
+				rv=read(st->sock,&recvl_net,sizeof(recvl_net));
+				if(rv==-1 && errno==EWOULDBLOCK)
+					return -1;
+				if(rv!=sizeof(recvl_net))
+					goto error_receiv_data;
+			}
 			st->iolen=rv;
 			st->recvl=ntohs(recvl_net);
 			if(!(st->recvbuf=(dns_hdr_t *)realloc_or_cleanup(st->recvbuf,st->recvl))) {
-				close(st->sock);
 				DEBUG_MSG("Out of memory in query.\n");
-				retval=RC_FATALERR;
 				break;
 			}
 		}
 		{
 			int offset=st->iolen-sizeof(uint16_t);
 			int rem=st->recvl-offset;
-			if(rem>0) {
-				rv=read(st->sock,((unsigned char*)st->recvbuf)+offset,rem);
-				if(rv==-1) {
-					if(errno==EWOULDBLOCK)
-						return -1;
-					goto error_receiv_data;
+			if (rem>0) {
+#ifdef ENABLE_TLS_QUERIES
+				if (global.query_method==C_TLS) {
+					rv=SSL_read(st->ssl,((unsigned char *)st->recvbuf)+offset,rem);
+					if (rv<=0) {
+						err=SSL_get_error(st->ssl,rv);
+						if (err==SSL_ERROR_WANT_READ)
+							return -1;
+						ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
+						DEBUG_PDNSDA_MSG("Error while reading TLS data from %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+						break;
+					}
 				}
-				if(rv==0)
-					goto error_receiv_data; /* unexpected EOF */
+				else
+#endif
+				{
+					rv=read(st->sock,((unsigned char *)st->recvbuf)+offset,rem);
+					if(rv==-1) {
+						if(errno==EWOULDBLOCK)
+							return -1;
+						goto error_receiv_data;
+					}
+					if(rv==0)
+						goto error_receiv_data; /* unexpected EOF */
+				}
 				st->iolen += rv;
 				if(rv<rem)
 					return -1;
 			}
 		}
+#ifdef ENABLE_TLS_QUERIES
+		if (global.query_method==C_TLS) {
+			DEBUG_MSG("Shutdown SSL connection and free context\n");
+			SSL_shutdown(st->ssl);
+			SSL_free(st->ssl);
+		}
+#endif
 		close(st->sock);
 		st->state=QS_DONE;
 		return RC_OK;
+
 	error_receiv_data:
-		if(rv==-1) st->s_errno=errno;
+		if (rv==-1) st->s_errno=errno;
 		DEBUG_PDNSDA_MSG("Error while receiving data from %s: %s\n", PDNSDA2STR(PDNSD_A(st)),
 				 rv==-1?strerror(errno):(rv==0 && st->iolen==0)?"no data":"incomplete data");
-		close(st->sock);
 	tcp_failed:
 #if !defined(NO_TCP_QUERIES) && !defined(NO_UDP_QUERIES)
 		if(st->qm==TCP_UDP) {
+			close(st->sock);
 			switch_to_udp(st);
 			DEBUG_PDNSDA_MSG("TCP query to %s failed. Trying to use UDP.\n", PDNSDA2STR(PDNSD_A(st)));
 			goto tryagain;
@@ -1013,16 +1134,13 @@ static int p_query_sm(query_stat_t *st)
 		}
 
 		/* maybe bind */
-		if (!bind_socket(st->sock)) {
-			close(st->sock);
+		if (!bind_socket(st->sock))
 			break;
-		}
 
 		/* connect */
 #ifdef ENABLE_IPV6
 		/* prefer IPv4 server for A queries */
-		if(!run_ipv4 && st->qtype==T_A && st->a4fallback.s_addr!=INADDR_ANY)
-		{
+		if (!run_ipv4 && st->qtype==T_A && st->a4fallback.s_addr!=INADDR_ANY) {
 			IPV6_MAPIPV4(&st->a4fallback,&st->a.sin6.sin6_addr);
 			st->a4fallback.s_addr=INADDR_ANY;
 			DEBUG_PDNSDA_MSG("Falling back to %s for A query\n", PDNSDA2STR(PDNSD_A(st)));
@@ -1037,7 +1155,7 @@ static int p_query_sm(query_stat_t *st)
 			/* if IPv6 connectivity is for some reason unavailable, perhaps the
 			   IPv4 fallback address can still be reached. */
 			else if(!run_ipv4 && (errno==ENETUNREACH || errno==ENETDOWN)
-				   && st->a4fallback.s_addr!=INADDR_ANY)
+				&& st->a4fallback.s_addr!=INADDR_ANY)
 			{
 #if DEBUG>0
 				char abuf[ADDRSTR_MAXLEN];
@@ -1051,17 +1169,14 @@ static int p_query_sm(query_stat_t *st)
 			}
 #endif
 			DEBUG_PDNSDA_MSG("Error while connecting to %s: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(errno));
-			close(st->sock);
 			break;
 		}
 
-		/* transmit query by udp*/
-		/* send will hopefully not block on a freshly opened socket (the buffer
-		 * must be empty) */
+		/* transmit query by udp */
+		/* send will hopefully not block on a freshly opened socket (the buffer must be empty) */
 		if (send(st->sock,&st->msg->hdr,st->transl,0)==-1) {
 			st->s_errno=errno;
 			DEBUG_PDNSDA_MSG("Error while sending data to %s: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(errno));
-			close(st->sock);
 			break;
 		}
 		st->state=QS_UDPRECEIVE;
@@ -1069,17 +1184,14 @@ static int p_query_sm(query_stat_t *st)
 		return -1;
 	case QS_UDPRECEIVE:
 	{
-		int udpbufsize= (st->edns_query?global.udpbufsize:UDP_BUFSIZE);
-		if(!(st->recvbuf=(dns_hdr_t *)realloc_or_cleanup(st->recvbuf,udpbufsize))) {
-			close(st->sock);
+		int udpbufsize=(st->edns_query?global.udpbufsize:UDP_BUFSIZE);
+		if (!(st->recvbuf=(dns_hdr_t *)realloc_or_cleanup(st->recvbuf,udpbufsize))) {
 			DEBUG_MSG("Out of memory in query.\n");
-			retval=RC_FATALERR;
 			break;
 		}
 		if ((rv=recv(st->sock,st->recvbuf,udpbufsize,0))==-1) {
 			st->s_errno=errno;
 			DEBUG_PDNSDA_MSG("Error while receiving data from %s: %s\n", PDNSDA2STR(PDNSD_A(st)),strerror(errno));
-			close(st->sock);
 			break;
 		}
 		st->recvl=rv;
@@ -1095,6 +1207,18 @@ static int p_query_sm(query_stat_t *st)
 		return RC_OK;
 	}
 #endif
+	}
+
+#ifdef ENABLE_TLS_QUERIES
+	if (st->ssl!=NULL) {
+		DEBUG_MSG("Free SSL context\n");
+		SSL_free(st->ssl);
+		st->ssl=NULL;
+	}
+#endif
+	if (st->sock>=0) {
+		close(st->sock);
+		st->sock=-1;
 	}
 
 	/* If we get here, something has gone wrong. */
@@ -2157,7 +2281,8 @@ static int p_recursive_query(query_stat_array q, const unsigned char *name, int 
 				if(i>=j) {
 					/* The below should not happen any more, but may once again
 					 * (immediate success) */
-					DEBUG_PDNSDA_MSG("Sending query to %s\n", PDNSDA2STR(PDNSD_A(qs)));
+					DEBUG_PDNSDA_MSG("Sending query to %s:%d\n", PDNSDA2STR(PDNSD_A(qs)),
+							 ntohs(SEL_IPVER(qs->a.sin4.sin_port,qs->a.sin6.sin6_port)));
 				retryquery:
 					rv=p_exec_query(&ent, name, thint, qs,&ns,c_soa);
 					if (rv==RC_OK) {
@@ -2322,7 +2447,7 @@ static int p_recursive_query(query_stat_array q, const unsigned char *name, int 
 							if (qs->state!=QS_DONE && qs->needs_testing)
 								qs->needs_testing=2;
 #if !defined(NO_TCP_QUERIES) && !defined(NO_UDP_QUERIES)
-							if (tentative_tcp_query(qs)) {
+							if ((global.query_method!=C_TLS) && tentative_tcp_query(qs)) {
 								/* We timed out while waiting for a TCP connection.
 								   Try again using UDP.
 								*/
@@ -2545,7 +2670,7 @@ static int p_recursive_query(query_stat_array q, const unsigned char *name, int 
 		/* Authority records present. Ask them, because the answer was non-authoritative. */
 		qstatnode_t qsn={q,qslist};
 		unsigned char save_ns=ent->c_ns,save_soa=ent->c_soa;
-		
+
 		if(qse->aa || qse->ra) {
 			/* The server claimed to be authoritative or have recursion available,
 			   yet we did not completely trust the answer for some reason.

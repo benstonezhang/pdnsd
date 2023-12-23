@@ -2,6 +2,7 @@
 
    Copyright (C) 2000, 2001 Thomas Moestl
    Copyright (C) 2002, 2003, 2005, 2006, 2007, 2009 Paul A. Rombouts
+   Copyright (C) 2023 Benstone Zhang
 
   This file is part of the pdnsd package.
 
@@ -45,6 +46,7 @@ enum {
 	TCP_ONLY,
 	TCP_UDP,
 	UDP_TCP,
+	C_TLS,
 	C_DEV,
 	C_DIALD,
 	C_INCLUDED,

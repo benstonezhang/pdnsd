@@ -43,7 +43,7 @@
 /* In all pdnsd versions before 1.0.6, DNS queries were always done over
  * TCP. Now, you have the choice. You can control that behaviour using
  * the -m command line switch, and you can give a preset here. There
- * are 3 different modes:
+ * are different modes:
  * UDP_ONLY: This is undoubtedly the fastest query method, because
  *       no TCP negotiation needs to be done.
  * TCP_ONLY: This is slower than uo, but generally more secure
@@ -52,7 +52,9 @@
  * TCP_UDP: TCP, then UDP. If the TCP query fails with a "connection refused"-
  *       error or times out, the query is retried using UDP.
  * UDP_TCP: UDP, then TCP. If the UDP reply is truncated (i.e. the tc flag is set),
- *       the query is retried using TCP. */
+ *       the query is retried using TCP.
+ * TLS: This is slower than TCP, but with privacy protection.
+ */
 #define M_PRESET UDP_ONLY
 
 /* In addition to choosing the presets, you may also completely disable
@@ -60,6 +62,7 @@
  * This saves some executable space. */
 #undef NO_UDP_QUERIES
 #undef NO_TCP_QUERIES
+#undef ENABLE_TLS_QUERIES
 
 /* With the following option, you can disable the TCP server functionality
  * of pdnsd. Nearly no program does TCP queries, so you probably can do

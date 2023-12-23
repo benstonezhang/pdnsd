@@ -43,6 +43,15 @@
     <center><h2>News</h2></center>
     <table width="100%" cellspacing=1 cellpadding=7>
       <tr>
+	<td bgcolor="#ffccff" width="20%"><b>2023-12-22</b></td>
+	<td bgcolor="#ccffff" width="80%"><b>Version 1.2.10-bzh has been released.</b>
+	  Version 1.2.10 add support for TLS query (DNS over TLS, RFC 7858) from upstream server
+	  by configured with <span style="white-space:nowrap;"><code>--enable-tls-queries</code></span>.
+	  The config of <code>server</code> part now support option <code>include_file</code> and
+	  <code>exclude_file</code>, can read include/exclude domain list from file.
+	</td>
+      </tr>
+      <tr>
 	<td bgcolor="#ffccff" width="20%"><b>2012-03-17</b></td>
 	<td bgcolor="#ccffff" width="80%"><b>Version 1.2.9a-par has been released.</b>
 	  Version 1.2.9a fixes a bug in the 1.2.9 release that causes a build failure when pdnsd is
@@ -545,6 +554,7 @@
 	Due to a bug, pdnsd 0.9.8 does not run with glibc2.1.1. This behaviour was
 	fixed in pdnsd 0.9.9.
       <li> For IPv6: glibc&gt;=2.1
+      <li> For TLS: openssl&gt;=3.0
     </ul>
     The system requirements under FreeBSD are:
     <ul>

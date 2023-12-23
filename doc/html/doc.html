@@ -331,11 +331,22 @@
 	</td>
       </tr>
       <tr>
+        <td class="nowrap">
+          <code>--enable-tls-queries</code>
+        </td>
+        <td class="nowrap">
+          Enable TLS as query method. This only effects the querying of name servers by pdnsd,
+          not the ability of pdnsd to answer queries from clients.
+          TLS queries are slower than TCP queries, but be more secure and have privacy
+          protection against certain types of attacks.
+        </td>
+      </tr>
+      <tr>
 	<td class="nowrap">
 	  <code>--with-query-method=<i>qm</i></code>
 	</td>
 	<td>
-	  Specify the query method (default=udponly, others: tcponly, tcpudp, udptcp).
+	  Specify the query method (default=udponly, others: tcponly, tcpudp, udptcp, tls).
 	  If you have enabled both UDP and TCP queries, this lets you control
 	  which query method pdnsd will use by default. tcpudp will try TCP
 	  first and fall back to UDP if TCP is not supported by the server;
@@ -1098,7 +1109,7 @@
       </tr>
       <tr>
 	<td>
-	  <b><code><a name="querymethod">query_method=(tcp_only|udp_only|tcp_udp|udp_tcp);</a></code></b><br>
+	  <b><code><a name="querymethod">query_method=(tcp_only|udp_only|tcp_udp|udp_tcp|tls);</a></code></b><br>
 	  This has the same effect as the <code>-m</code> command line option.
 	  Read the documentation for the <a href="#querymethodcommandlineoption">command line option</a> on this.
 	  <code>tcp_only</code> corresponds to the <code>to</code>, <code>udp_only</code> to the <code>uo</code>,
@@ -1765,6 +1776,17 @@
       </tr>
       <tr>
 	<td>
+	  <b><code>include_file=<i>string</i>;</code></b><br>
+	  The string specifies a file name. The file should have "include" entries for every line, e.g.:
+	  <p>
+	    <div class="indented"><code>.foo</code></div>
+	    <div class="indented"><code>.bar</code></div>
+	    <div class="indented"><code>.my.com</code></div></p>
+	  Failure is indicated only when the file cannot be opened, malformed entries will be ignored.
+	</td>
+      </tr>
+      <tr>
+	<td>
 	  <b><code>exclude=<i>string</i>;</code></b><br>
 	  This option adds an entry to the exclusion/inclusion list. If a domain matches
 	  the name given as string, the server is not queried if this was the first matching rule
@@ -1779,6 +1801,17 @@
 	  pdnsd now also accepts a more compact notation for adding several <code>"exclude"</code> entries in
 	  one line, e.g.:
 	  <p class="indented"><code>exclude=".foo",".bar",".my.dom";</code></p>
+	</td>
+      </tr>
+      <tr>
+	<td>
+	  <b><code>exclude_file=<i>string</i>;</code></b><br>
+	  The string specifies a file name. The file should have "exclude" entries for every line, e.g.:
+	  <p>
+	    <div class="indented"><code>.foo</code></div>
+	    <div class="indented"><code>.bar</code></div>
+	    <div class="indented"><code>.my.com</code></div></p>
+	  Failure is indicated only when the file cannot be opened, malformed entries will be ignored.
 	</td>
       </tr>
     </table>

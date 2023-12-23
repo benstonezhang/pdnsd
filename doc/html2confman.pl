@@ -78,8 +78,12 @@ while(<>) {
     s{^\s*((?:<[^<>]+>)*?)<h[1-4]>[\d.]*\s*(.*)</h[1-4]>((?:<[^<>]+>)*?)(?:<br>)?\s*$}{.SS $1$2$3\n}i;
     if(s{^\s*<tr>\s*}{.TP\n}i) {$taggedparagraph=1}
     if(m{^\s*</tr>}i) {$taggedparagraph=0}
-    s{^\s*((?:<[^<>]+>)*?)<b>(.*)</b>((?:<[^<>]+>)*?)(?:<br>)?\s*$}{.B $1$2$3\n}i  if $taggedparagraph;
-    s{^\s*((?:<[^<>]+>)*?or(?:<[^<>]+>)*?)(?:<br>)?\s*$}{$1\n.PD 0\n.TP\n.PD\n}i  if $taggedparagraph;
+    if ($taggedparagraph) {
+      s{^\s*((?:<[^<>]+>)*?)<b>(.*)</b>((?:<[^<>]+>)*?)(?:<br>)?\s*$}{.B $1$2$3\n}i;
+      s{^\s*((?:<[^<>]+>)*?or(?:<[^<>]+>)*?)(?:<br>)?\s*$}{$1\n.PD 0\n.TP\n.PD\n}i;
+      s{(.*</div>)</p>}{$1\n};
+      s{<div.*><code>(\..*)</code></div>}{\\\&$1\n.br};  # escape "." at line begin
+    }
     if(s{^\s*<pre>}{.DS L\n}i) {$displayed=1}
     s{^\t}{        } if $displayed;
     if(s{</pre>\s*$}{\n.DE\n\n}i) {$displayed=0}

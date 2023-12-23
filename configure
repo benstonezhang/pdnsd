@@ -655,6 +655,7 @@ CPP
 am__fastdepCC_FALSE
 am__fastdepCC_TRUE
 CCDEPMODE
+am__nodep
 AMDEPBACKSLASH
 AMDEP_FALSE
 AMDEP_TRUE
@@ -742,6 +743,7 @@ enable_ipv4_startup
 enable_ipv6_startup
 enable_udp_queries
 enable_tcp_queries
+enable_tls_queries
 with_query_method
 enable_tcp_server
 enable_src_addr_disc
@@ -758,7 +760,7 @@ with_hash_buckets
 enable_hash_debug
 enable_rcsids
 with_tcp_qtimeout
-enable_tcp_subseq
+with_tcp_max_query
 with_par_queries
 with_max_nameserver_ips
 enable_specbuild
@@ -1410,6 +1412,7 @@ Optional Features:
                               (default=IPv4)
   --disable-udp-queries       Disable udp as query method.
   --disable-tcp-queries       Disable tcp as query method.
+  --enable-tls-queries        Enable tls as query method.
   --disable-tcp-server        Disable the TCP serving ability of pdnsd
   --disable-src-addr-disc     Disable the UDP source address discovery
   --enable-socket-locking     Enable the UDP socket locking
@@ -1420,8 +1423,6 @@ Optional Features:
   --enable-underscores        Allow _ in domain names (obsolete, currently ignored)
   --enable-hash-debug         Debug hash tables (warning: massive output)
   --enable-rcsids             Enable RCS IDs in executables (obsolete, currently ignored)
-  --enable-tcp-subseq         Enable multiple dns querys using one
-                              tcp connection
   --enable-specbuild          Only used when building pdnsd from spec files
 
 Optional Packages:
@@ -1434,7 +1435,7 @@ Optional Packages:
   --with-cachedir=dir         Default directory for pdnsd cache
                               (default=/var/cache/pdnsd)
   --with-query-method=qm      Specify the query method (default=udponly;
-                              others: tcponly, tcpudp, udptcp)
+                               others: tcponly, tcpudp, udptcp, tls)
   --with-random-device=device Specify random device other than
                               /dev/random; default: C Library random() PRNG;
                               special value arc4random for BSD C Library
@@ -1447,6 +1448,7 @@ Optional Packages:
                               The number actually used is the smallest power of two
                               greater or equal to the number specified here.
   --with-tcp-qtimeout=secs    Specify default tcp query timeout (default=30)
+  --with-tcp-max-query=num    Allow a maximum of queries in tcp connection (default=3)
   --with-par-queries=num      Specify default parallel query number (default=2)
   --with-max-nameserver-ips=num      Specify maximum number of IP addresses used per nameserver obtained from NS records (default=3)
   --with-thread-lib=lib       Specify thread library, overriding automatic detection (for Linux only).
@@ -1914,6 +1916,7 @@ target="autodetect"
 cachedir="/var/cache/$package"
 ipv4_default=1
 have_ipv4="yes"
+have_ipv6="no"
 #newrrs="yes"
 query_m="udponly"
 have_tcp_server="yes"
@@ -1923,6 +1926,7 @@ def_id="nobody"
 #have_rcsids="no"
 udp_queries="yes"
 tcp_queries="yes"
+tls_queries="no"
 tempdir="/tmp"
 randomdev=default
 freebsd_pthread="4"
@@ -2431,11 +2435,11 @@ MAKEINFO=${MAKEINFO-"${am_missing_run}makeinfo"}
 
 # We need awk for the "check" target.  The system "awk" is bad on
 # some platforms.
-# Always define AMTAR for backward compatibility.
+# Always define AMTAR for backward compatibility.  Yes, it's still used
+# in the wild :-(  We should find a proper way to deprecate it ...
+AMTAR='$${TAR-tar}'
 
-AMTAR=${AMTAR-"${am_missing_run}tar"}
-
-am__tar='${AMTAR} chof - "$$tardir"'; am__untar='${AMTAR} xf -'
+am__tar='$${TAR-tar} chof - "$$tardir"' am__untar='$${TAR-tar} xf -'
 
 
 
@@ -2495,6 +2499,7 @@ fi
 if test "x$enable_dependency_tracking" != xno; then
   am_depcomp="$ac_aux_dir/depcomp"
   AMDEPBACKSLASH='\'
+  am__nodep='_no'
 fi
  if test "x$enable_dependency_tracking" != xno; then
   AMDEP_TRUE=
@@ -3451,6 +3456,7 @@ else
   # instance it was reported that on HP-UX the gcc test will end up
   # making a dummy file named `D' -- because `-MD' means `put the output
   # in D'.
+  rm -rf conftest.dir
   mkdir conftest.dir
   # Copy depcomp to subdir because otherwise we won't find it if we're
   # using a relative directory.
@@ -3510,7 +3516,7 @@ else
 	break
       fi
       ;;
-    msvisualcpp | msvcmsys)
+    msvc7 | msvc7msys | msvisualcpp | msvcmsys)
       # This compiler won't grok `-c -o', but also, the minuso test has
       # not run yet.  These depmodes are late enough in the game, and
       # so weak that their functioning should not be impacted.
@@ -4504,6 +4510,7 @@ _ACEOF
 # Check whether --enable-ipv6 was given.
 if test "${enable_ipv6+set}" = set; then
   enableval=$enable_ipv6;  if test $enableval = "yes" ; then
+    have_ipv6=$enableval
     cat >>confdefs.h <<\_ACEOF
 #define ENABLE_IPV6 1
 _ACEOF
@@ -4552,6 +4559,12 @@ if test "${enable_tcp_queries+set}" = set; then
 fi
 
 
+# Check whether --enable-tls-queries was given.
+if test "${enable_tls_queries+set}" = set; then
+  enableval=$enable_tls_queries; tls_queries=$enableval
+fi
+
+
 
 # Check whether --with-query-method was given.
 if test "${with_query_method+set}" = set; then
@@ -4589,9 +4602,17 @@ _ACEOF
     udp_queries=yes;
     tcp_queries=yes;
     ;;
+  tls)
+    cat >>confdefs.h <<\_ACEOF
+#define M_PRESET C_TLS
+_ACEOF
+
+    tcp_queries=yes;
+    tls_queries=yes;
+    ;;
   *)
-    { { $as_echo "$as_me:$LINENO: error: --with-query-method must have udponly, tcponly, tcpudp or udptcp as parameter." >&5
-$as_echo "$as_me: error: --with-query-method must have udponly, tcponly, tcpudp or udptcp as parameter." >&2;}
+    { { $as_echo "$as_me:$LINENO: error: --with-query-method must have udponly, tcponly, tcpudp, udptcp or tls as parameter." >&5
+$as_echo "$as_me: error: --with-query-method must have udponly, tcponly, tcpudp, udptcp or tls as parameter." >&2;}
    { (exit 1); exit 1; }; }
     ;;
 esac
@@ -4602,6 +4623,10 @@ _ACEOF
 
 test $tcp_queries != "yes" && cat >>confdefs.h <<\_ACEOF
 #define NO_TCP_QUERIES 1
+_ACEOF
+
+test $tls_queries = "yes" && cat >>confdefs.h <<\_ACEOF
+#define ENABLE_TLS_QUERIES 1
 _ACEOF
 
 
@@ -4764,10 +4789,11 @@ _ACEOF
 fi
 
 
-# Check whether --enable-tcp-subseq was given.
-if test "${enable_tcp_subseq+set}" = set; then
-  enableval=$enable_tcp_subseq; test $enableval = "yes" && cat >>confdefs.h <<\_ACEOF
-#define TCP_SUBSEQ 1
+
+# Check whether --with-tcp-max-query was given.
+if test "${with_tcp_max_query+set}" = set; then
+  withval=$with_tcp_max_query; cat >>confdefs.h <<_ACEOF
+#define TCP_MAX_QUERY $withval
 _ACEOF
 
 fi
@@ -5506,6 +5532,7 @@ else
   # instance it was reported that on HP-UX the gcc test will end up
   # making a dummy file named `D' -- because `-MD' means `put the output
   # in D'.
+  rm -rf conftest.dir
   mkdir conftest.dir
   # Copy depcomp to subdir because otherwise we won't find it if we're
   # using a relative directory.
@@ -5565,7 +5592,7 @@ else
 	break
       fi
       ;;
-    msvisualcpp | msvcmsys)
+    msvc7 | msvc7msys | msvisualcpp | msvcmsys)
       # This compiler won't grok `-c -o', but also, the minuso test has
       # not run yet.  These depmodes are late enough in the game, and
       # so weak that their functioning should not be impacted.
@@ -6316,6 +6343,7 @@ else
   # instance it was reported that on HP-UX the gcc test will end up
   # making a dummy file named `D' -- because `-MD' means `put the output
   # in D'.
+  rm -rf conftest.dir
   mkdir conftest.dir
   # Copy depcomp to subdir because otherwise we won't find it if we're
   # using a relative directory.
@@ -6375,7 +6403,7 @@ else
 	break
       fi
       ;;
-    msvisualcpp | msvcmsys)
+    msvc7 | msvc7msys | msvisualcpp | msvcmsys)
       # This compiler won't grok `-c -o', but also, the minuso test has
       # not run yet.  These depmodes are late enough in the game, and
       # so weak that their functioning should not be impacted.
@@ -6781,6 +6809,9 @@ $as_echo "\"${uname_sys}\"" >&6; }
 _ACEOF
 
       target="BSD"
+      if test "${uname_sys}" = Darwin -a "$have_ipv6" = "yes"; then
+        CFLAGS="$CFLAGS -D__APPLE_USE_RFC_3542"
+      fi
       ;;
     CYGWIN*)
       { $as_echo "$as_me:$LINENO: result: \"${uname_sys}\"" >&5
@@ -9888,6 +9919,183 @@ _ACEOF
 fi
 done
 
+
+if test $tls_queries = "yes"; then
+    { $as_echo "$as_me:$LINENO: checking for library containing OPENSSL_init" >&5
+$as_echo_n "checking for library containing OPENSSL_init... " >&6; }
+if test "${ac_cv_search_OPENSSL_init+set}" = set; then
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char OPENSSL_init ();
+int
+main ()
+{
+return OPENSSL_init ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' crypto; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  rm -f conftest.$ac_objext conftest$ac_exeext
+if { (ac_try="$ac_link"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval ac_try_echo="\"\$as_me:$LINENO: $ac_try_echo\""
+$as_echo "$ac_try_echo") >&5
+  (eval "$ac_link") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  $as_echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_c_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest$ac_exeext && {
+	 test "$cross_compiling" = yes ||
+	 $as_test_x conftest$ac_exeext
+       }; then
+  ac_cv_search_OPENSSL_init=$ac_res
+else
+  $as_echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+
+fi
+
+rm -rf conftest.dSYM
+rm -f core conftest.err conftest.$ac_objext conftest_ipa8_conftest.oo \
+      conftest$ac_exeext
+  if test "${ac_cv_search_OPENSSL_init+set}" = set; then
+  break
+fi
+done
+if test "${ac_cv_search_OPENSSL_init+set}" = set; then
+  :
+else
+  ac_cv_search_OPENSSL_init=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:$LINENO: result: $ac_cv_search_OPENSSL_init" >&5
+$as_echo "$ac_cv_search_OPENSSL_init" >&6; }
+ac_res=$ac_cv_search_OPENSSL_init
+if test "$ac_res" != no; then
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+fi
+
+    { $as_echo "$as_me:$LINENO: checking for library containing OPENSSL_init_ssl" >&5
+$as_echo_n "checking for library containing OPENSSL_init_ssl... " >&6; }
+if test "${ac_cv_search_OPENSSL_init_ssl+set}" = set; then
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char OPENSSL_init_ssl ();
+int
+main ()
+{
+return OPENSSL_init_ssl ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' ssl; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib -lcrypto $ac_func_search_save_LIBS"
+  fi
+  rm -f conftest.$ac_objext conftest$ac_exeext
+if { (ac_try="$ac_link"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval ac_try_echo="\"\$as_me:$LINENO: $ac_try_echo\""
+$as_echo "$ac_try_echo") >&5
+  (eval "$ac_link") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  $as_echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_c_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest$ac_exeext && {
+	 test "$cross_compiling" = yes ||
+	 $as_test_x conftest$ac_exeext
+       }; then
+  ac_cv_search_OPENSSL_init_ssl=$ac_res
+else
+  $as_echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+
+fi
+
+rm -rf conftest.dSYM
+rm -f core conftest.err conftest.$ac_objext conftest_ipa8_conftest.oo \
+      conftest$ac_exeext
+  if test "${ac_cv_search_OPENSSL_init_ssl+set}" = set; then
+  break
+fi
+done
+if test "${ac_cv_search_OPENSSL_init_ssl+set}" = set; then
+  :
+else
+  ac_cv_search_OPENSSL_init_ssl=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:$LINENO: result: $ac_cv_search_OPENSSL_init_ssl" >&5
+$as_echo "$ac_cv_search_OPENSSL_init_ssl" >&6; }
+ac_res=$ac_cv_search_OPENSSL_init_ssl
+if test "$ac_res" != no; then
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+fi
+
+fi
 
 ac_config_files="$ac_config_files pdnsd.spec Makefile file-list.base contrib/Makefile doc/Makefile doc/pdnsd.8 doc/pdnsd.conf.5 doc/pdnsd.conf src/Makefile src/pdnsd-ctl/Makefile src/rc/Makefile src/rc/RedHat/Makefile src/rc/RedHat/pdnsd src/rc/SuSE/Makefile src/rc/SuSE/pdnsd src/rc/Debian/Makefile src/rc/Debian/pdnsd src/rc/Slackware/Makefile src/rc/Slackware/rc.pdnsd src/rc/ArchLinux/Makefile src/rc/ArchLinux/pdnsd src/test/Makefile PKGBUILD"
 

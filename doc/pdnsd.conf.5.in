@@ -12,7 +12,7 @@
 .\" You can find a copy of the GNU GPL in the file COPYING in the source
 .\" or documentation directory.
 .\" 
-.TH PDNSD.CONF 5 "Apr 2012" "pdnsd @fullversion@"
+.TH PDNSD.CONF 5 "Dec 2023" "pdnsd @fullversion@"
 .SH NAME
 pdnsd.conf \- The configuration file for pdnsd
 .hw config
@@ -41,8 +41,8 @@ a comment, or one of ",;{}\".
 Since version 1.2.9 a backslash (\) inside a string is interpreted as an escape character,
 so it is possible to include special characters in strings (both quoted or unquoted)
 by preceding them with a backslash. Some escape sequences are in interpreted as in the C
-programming language, e.g. \t becomes a tab,
-\n becomes a new-line control char.
+programming language, e.g. \\t becomes a tab,
+\\n becomes a new-line control char.
 .br
 A time specification consists a sequence of digits followed by a one-letter suffix.
 The following suffixes are recognized:
@@ -255,7 +255,7 @@ any "traditional" server has them (the DNS security extensions solve these probl
 supported).
 One of this vulnerabilities is that an attacker may bombard you with forged answers in hopes that one may match a
 query
-you have done. If you have done such a query, one in 65536 forged packets will be succesful (i.e. an average packet
+you have done. If you have done such a query, one in 65536 forged packets will be successful (i.e. an average packet
 count of 32768 is needed for that attack). pdnsd can use TCP for queries,
 which has a slightly higher overhead, but is much less vulnerable to such attacks on sane operating systems. Also, pdnsd
 chooses random query ids, so that an attacker cannot take a shortcut. If the attacker is able to listen to your network
@@ -310,7 +310,7 @@ will write its pid into when it starts in daemon mode.
 This has the same effect as the \-v command line option: you can set the verbosity of pdnsd's
 messages with it. The argument is a number between 0 (few messages) to 3 (most messages).
 .TP
-.B query_method=(tcp_only|udp_only|tcp_udp|udp_tcp);
+.B query_method=(tcp_only|udp_only|tcp_udp|udp_tcp|tls);
 This has the same effect as the \-m command line option.
 Read the documentation for the command line option on this.
 tcp_only corresponds to the to, udp_only to the uo,
@@ -576,7 +576,7 @@ you need a /dev/isdninfo device file (major#45, minor#255), or the
 isdn uptest will always fail.
 .IP
 \(bu \fBdev\fP and \fBdiald\fP: Perform an if uptest, and, if that
-was succesful, additionally check whether a program is running that
+was successful, additionally check whether a program is running that
 has locked a given (modem-) device. The needed parameters are an interface (specified as for the if
 uptest, e.g. "ppp0") and a device relative to /dev (e.g.
 "modem" for /dev/modem specified using the device= option.
@@ -716,7 +716,7 @@ In every fetched dns record, there is a cache timeout given, which
 specifies how long the fetched data may be cached until it needs to be
 reloaded. If purge_cache is set to off, the stale records are not purged
 (unless the cache size would be exceeded, in this case the oldest records are purged).
-Instead, they are still served if they cannot succesfully be
+Instead, they are still served if they cannot successfully be
 updated (e.g. because all servers are down).
 .br
 Default is off.
@@ -923,15 +923,16 @@ include=".foo",".bar",".my.dom";
 
 .TP
 .B include_file=\fIstring\fP;
-The string specifies a file name. The file should have "include" entries for every line,
-e.g.:
+The string specifies a file name. The file should have "include" entries for every line, e.g.:
 
 \&.foo
 .br
 \&.bar
 .br
-\&.my.dom
+\&.my.com
+.br
 
+Failure is indicated only when the file cannot be opened, malformed entries will be ignored.
 .TP
 .B exclude=\fIstring\fP;
 This option adds an entry to the exclusion/inclusion list. If a domain matches
@@ -954,15 +955,16 @@ exclude=".foo",".bar",".my.dom";
 
 .TP
 .B exclude_file=\fIstring\fP;
-The string specifies a file name. The file should have "exclude" entries for every line,
-e.g.:
+The string specifies a file name. The file should have "exclude" entries for every line, e.g.:
 
 \&.foo
 .br
 \&.bar
 .br
-\&.my.dom
+\&.my.com
+.br
 
+Failure is indicated only when the file cannot be opened, malformed entries will be ignored.
 
 .SS rr Section
 Every rr section specifies a dns resource record that is stored locally. It
@@ -1061,8 +1063,8 @@ rr section will cancel the definitions in the previous ones.
 .TP
 .B ptr=\fIstring\fP;
 Defines a PTR (domain name pointer) record. The argument is a host name in
-dotted notation (see name). The ptr record is for resolving adresses into names. For example, if
-you want the adress 127.0.0.1 to resolve into localhost, and localhost into 127.0.0.1, you need something
+dotted notation (see name). The ptr record is for resolving addresses into names. For example, if
+you want the address 127.0.0.1 to resolve into localhost, and localhost into 127.0.0.1, you need something
 like the following sections:
 .br
 .DS L
@@ -1088,10 +1090,10 @@ with reverse=on.
 There is something special about the name in the second section:
 when a resolver wants to get a host name from an internet address,
 it composes an address that is built of the IP address in reverse byte order
-(1.0.0.127 instead of 127.0.0.1) where each byte of the adress written
+(1.0.0.127 instead of 127.0.0.1) where each byte of the address written
 as number constitutes a sub-domain under the domain in-addr.arpa. 
 .br
-So, if you want to compose an adress for reverse resolving, take your ip in dotted notation (e.g. 1.2.3.4),
+So, if you want to compose an address for reverse resolving, take your ip in dotted notation (e.g. 1.2.3.4),
 reverse the byte order (4.3.2.1) and append in-addr.arpa. (4.3.2.1.in-addr.arpa.)
 Then, define an rr section giving this address as name and the domain name corresponding to
 that ip in the ptr option.
@@ -1183,7 +1185,7 @@ Every neg section specifies a dns resource record or a dns domain that should be
 cached negatively locally. Queries for negatively cached records are always answered
 immediatley with an error or an empty answer without querying other hosts as long
 as the record is valid. The records defined with neg sections remain
-valid until they are explicitely invalidated or deleted by the user using
+valid until they are explicitly invalidated or deleted by the user using
 pdnsd\-ctl.
 .br
 This is useful if a certain application asks periodically for nonexisting hosts or

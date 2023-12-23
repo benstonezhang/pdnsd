@@ -2,6 +2,7 @@
 
    Copyright (C) 2000, 2001 Thomas Moestl
    Copyright (C) 2002, 2003, 2005, 2006, 2007, 2008, 2009, 2011 Paul A. Rombouts
+   Copyright (C) 2023 Benstone Zhang
 
   This file is part of the pdnsd package.
 
@@ -36,6 +37,9 @@
 #include <linux/if.h>
 #else
 #include <net/if.h>
+#endif
+#ifdef ENABLE_TLS_QUERIES
+#include <openssl/types.h>
 #endif
 #include "ipvers.h"
 #include "list.h"
@@ -160,6 +164,9 @@ typedef struct {
 	int           query_port_end;
 	int           udpbufsize;
 	zone_array    deleg_only_zones;
+#ifdef ENABLE_TLS_QUERIES
+	SSL_CTX      *ssl_ctx;
+#endif
 } globparm_t;
 
 typedef struct {

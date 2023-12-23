@@ -37,6 +37,10 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+#ifdef ENABLE_TLS_QUERIES
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
 #include "consts.h"
 #include "cache.h"
 #include "status.h"
@@ -77,7 +81,7 @@ static const char info_message[] =
 	"pdnsd - dns proxy daemon, version " VERSION "\n\n"
 	"Copyright (C) 2000, 2001 Thomas Moestl\n"
 	"Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2010 Paul A. Rombouts\n"
-    "Copyright (C) 2023 Benstone Zhang.\n\n"
+	"Copyright (C) 2023 Benstone Zhang.\n\n"
 	"pdnsd is free software; you can redistribute it and/or modify\n"
 	"it under the terms of the GNU General Public License as published by\n"
 	"the Free Software Foundation; either version 3 of the License, or\n"
@@ -212,6 +216,46 @@ static int check_ipv6()
     }
     close(fd);
     return 1;
+}
+#endif
+
+#ifdef ENABLE_TLS_QUERIES
+static int tls_verify_callback(int preverify_ok,X509_STORE_CTX *ctx){
+	if(!preverify_ok) {
+		int err=X509_STORE_CTX_get_error(ctx);
+		int depth=X509_STORE_CTX_get_error_depth(ctx);
+		X509 *err_cert=X509_STORE_CTX_get_current_cert(ctx);
+		X509_NAME *name =X509_get_subject_name(err_cert);
+		ASN1_STRING *as;
+		unsigned char *utf8;
+		int len=0, l;
+		char buf[256];
+		for (int i=0; i<X509_NAME_entry_count(name); i++) {
+			as=X509_NAME_ENTRY_get_data(X509_NAME_get_entry(name,i));
+			if (as->type==V_ASN1_PRINTABLESTRING) {
+				if(len+as->length<sizeof(buf)) {
+					memcpy(buf+len,as->data,as->length);
+					len+=as->length;
+					buf[len]=',';
+					len++;
+				}
+			} else if (as->type==V_ASN1_UTF8STRING) {
+				l=ASN1_STRING_to_UTF8(&utf8, as);
+				if (l>0) {
+					if (len+l<sizeof(buf)) {
+						memcpy(buf+len,utf8,l);
+						len+=l;
+						buf[len]=',';
+						len++;
+					}
+					OPENSSL_free(utf8);
+				}
+			}
+		}
+		buf[len-1]=0x0;
+		log_error("verify error #%d: %s, depth=%d, %s",err,X509_verify_cert_error_string(err),depth,buf);
+	}
+	return preverify_ok;
 }
 #endif
 
@@ -582,6 +626,24 @@ int main(int argc,char *argv[])
 #endif
 	}
 
+#ifdef ENABLE_TLS_QUERIES
+	if (global.query_method==C_TLS) {
+		OPENSSL_init_ssl(OPENSSL_INIT_SSL_DEFAULT|OPENSSL_INIT_NO_LOAD_CONFIG, NULL);
+
+		global.ssl_ctx=SSL_CTX_new(TLS_client_method());
+		if (global.ssl_ctx==NULL) {
+			log_error("TLS initialize failed: %s", ERR_error_string(ERR_get_error(),NULL));
+			_exit(1);
+		}
+
+		SSL_CTX_set_security_level(global.ssl_ctx,3);
+		SSL_CTX_set_verify(global.ssl_ctx,SSL_VERIFY_PEER,tls_verify_callback);
+		SSL_CTX_set_verify_depth(global.ssl_ctx,3);
+		SSL_CTX_set_default_verify_paths(global.ssl_ctx);
+		SSL_CTX_clear_mode(global.ssl_ctx,SSL_MODE_AUTO_RETRY);
+	}
+#endif
+
 #if DEBUG>0
 	debug_p= (global.debug && dbg_file);
 #endif
@@ -700,6 +762,12 @@ int main(int argc,char *argv[])
 	if(stat_pipe) close(stat_sock);
 	if (sock_path && unlink(sock_path))
 		log_warn("Failed to unlink %s: %s",sock_path, strerror(errno));
+
+#ifdef ENABLE_TLS_QUERIES
+	if (global.query_method==C_TLS)
+		SSL_CTX_free(global.ssl_ctx);
+	OPENSSL_cleanup();
+#endif
 
 	free_rng();
 #if DEBUG>0

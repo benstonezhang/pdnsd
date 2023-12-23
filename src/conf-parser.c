@@ -733,7 +733,7 @@ int confparse(FILE* in, char *prestr, globparm_t *global, servparm_array *server
 
 	  case C_QUERY_METHOD: {
 	    int cnst;
-	    ASSIGN_CONST(cnst,p,cnst==TCP_ONLY || cnst==UDP_ONLY || cnst==TCP_UDP || cnst==UDP_TCP,"bad qualifier in query_method= option.");
+	    ASSIGN_CONST(cnst,p,cnst==TCP_ONLY || cnst==UDP_ONLY || cnst==TCP_UDP || cnst==UDP_TCP || cnst==C_TLS,"bad qualifier in query_method= option.");
 #ifdef NO_TCP_QUERIES
 	    if (cnst==TCP_ONLY) {
 	      REPORT_ERROR("the tcp_only option is only available when pdnsd is compiled with TCP support.");
@@ -742,24 +742,31 @@ int confparse(FILE* in, char *prestr, globparm_t *global, servparm_array *server
 	    else
 #endif
 #ifdef NO_UDP_QUERIES
-	      if (cnst==UDP_ONLY) {
-		REPORT_ERROR("the udp_only option is only available when pdnsd is compiled with UDP support.");
-		PARSERROR;
-	      }
-	      else
+	    if (cnst==UDP_ONLY) {
+	      REPORT_ERROR("the udp_only option is only available when pdnsd is compiled with UDP support.");
+	      PARSERROR;
+	    }
+	    else
 #endif
 #if defined(NO_TCP_QUERIES) || defined(NO_UDP_QUERIES)
-		if (cnst==TCP_UDP) {
-		  REPORT_ERROR("the tcp_udp option is only available when pdnsd is compiled with both TCP and UDP support.");
-		  PARSERROR;
-		}
-		else if (cnst==UDP_TCP) {
-		  REPORT_ERROR("the udp_tcp option is only available when pdnsd is compiled with both TCP and UDP support.");
-		  PARSERROR;
-		}
-		else
+	    if (cnst==TCP_UDP) {
+	      REPORT_ERROR("the tcp_udp option is only available when pdnsd is compiled with both TCP and UDP support.");
+	      PARSERROR;
+	    }
+	    else if (cnst==UDP_TCP) {
+	      REPORT_ERROR("the udp_tcp option is only available when pdnsd is compiled with both TCP and UDP support.");
+	      PARSERROR;
+	    }
+	    else
 #endif
-		  if(!cmdline.query_method) global->query_method=cnst;
+#ifndef ENABLE_TLS_QUERIES
+	    if (cnst==C_TLS) {
+		REPORT_ERROR("the tls option is only available when pdnsd is compiled with TLS support.");
+		PARSERROR;
+	    }
+	    else
+#endif
+	    if(!cmdline.query_method) global->query_method=cnst;
 	  }
 	    break;
 
@@ -959,6 +966,12 @@ int confparse(FILE* in, char *prestr, globparm_t *global, servparm_array *server
 	server=serv_presets;
 #	undef  CLEANUP_HANDLER
 #	define CLEANUP_HANDLER (free_servparm(&server))
+
+#ifdef ENABLE_TLS_QUERIES
+	if (global->query_method==C_TLS) {
+		server.port=853;
+	}
+#endif
 
 	while(isalpha(*p)) {
 	  SCAN_ALPHANUM(ps,p,len);

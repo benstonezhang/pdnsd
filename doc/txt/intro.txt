@@ -1,4 +1,4 @@
--------------------------------------------------------------------------------
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 About pdnsd
 
@@ -58,11 +58,11 @@ follows rfc 2181 (except for one minor issue in the FreeBSD port, see the
 documentation). It does not support the following features, of which most are
 marked optional, experimental or obsolete in these rfcs:
 
-  * Inverse queries
-  * Status queries
-  * Completion queries
-  * Namespaces other than IN (Internet)
-  * AXFR and IXFR queries (whole zone transfers); since pdnsd does not maintain
+  • Inverse queries
+  • Status queries
+  • Completion queries
+  • Namespaces other than IN (Internet)
+  • AXFR and IXFR queries (whole zone transfers); since pdnsd does not maintain
     zones, that should not violate the standard
 
 The following record types, that are extensions to the original DNS standard,
@@ -71,29 +71,29 @@ you can disable runtime support for the unneeded ones before compiling pdnsd
 and save a little cache and executable space, see the source file src/
 rr_types.in):
 
-  * RP (responsible person, RFC 1183)
-  * AFSDB (AFS database location, RFC 1183)
-  * X25 (X25 address, RFC 1183)
-  * ISDN (ISDN number/address, RFC 1183)
-  * RT (route through, RFC 1183)
-  * NSAP (Network Service Access Protocol address , RFC 1348)
-  * PX (X.400/RFC822 mapping information, RFC 1995)
-  * GPOS (geographic position, deprecated)
-  * AAAA (IPv6 address, RFC 1886)
-  * LOC (location, RFC 1876)
-  * EID (Nimrod EID)
-  * NIMLOC (Nimrod locator)
-  * SRV (service record, RFC 2782)
-  * ATMA (ATM address)
-  * NAPTR (URI mapping, RFC 2168)
-  * KX (key exchange, RFC 2230)
-  * CERT (Certificate record, RFC 4398)
-  * DS (Delegation Signer, RFC 4034)
-  * RRSIG (Resource Record Signature, RFC 4034)
-  * NSEC (Next Secure, RFC 4034)
-  * DNSKEY (record containing the public key for a zone, RFC 4034)
-  * NSEC3 (Next Secure version 3, RFC 5155)
-  * NSEC3PARAM (NSEC3 parameters, RFC 5155)
+  • RP (responsible person, RFC 1183)
+  • AFSDB (AFS database location, RFC 1183)
+  • X25 (X25 address, RFC 1183)
+  • ISDN (ISDN number/address, RFC 1183)
+  • RT (route through, RFC 1183)
+  • NSAP (Network Service Access Protocol address , RFC 1348)
+  • PX (X.400/RFC822 mapping information, RFC 1995)
+  • GPOS (geographic position, deprecated)
+  • AAAA (IPv6 address, RFC 1886)
+  • LOC (location, RFC 1876)
+  • EID (Nimrod EID)
+  • NIMLOC (Nimrod locator)
+  • SRV (service record, RFC 2782)
+  • ATMA (ATM address)
+  • NAPTR (URI mapping, RFC 2168)
+  • KX (key exchange, RFC 2230)
+  • CERT (Certificate record, RFC 4398)
+  • DS (Delegation Signer, RFC 4034)
+  • RRSIG (Resource Record Signature, RFC 4034)
+  • NSEC (Next Secure, RFC 4034)
+  • DNSKEY (record containing the public key for a zone, RFC 4034)
+  • NSEC3 (Next Secure version 3, RFC 5155)
+  • NSEC3PARAM (NSEC3 parameters, RFC 5155)
 
 Note: This list is incomplete. For the complete list see the source file src/
 rr_types.in.
@@ -121,25 +121,25 @@ regarded as available (so that pdnsd can query it), in addition to the obvious
 "none" test (the server is always regarded as available, or availability is set
 on or off using the pdnsd-ctl utility). These tests are:
 
-  * ping: a given adress is ping'ed in a given interval. If it there is no
+  • ping: a given address is ping'ed in a given interval. If it there is no
     response or the host is unreachable, the server is seen to be not available
     (for those who don't know: pinging is sending a certain Internet packet
     type to a host to which any standard-conformant host is required to reply).
-  * if: a given network interface is tested whether it is existent, up and
+  • if: a given network interface is tested whether it is existent, up and
     running. If it is not, the server is regarded to be not available. This is
     especially useful for ppp and similar interfaces. A special case test for
     Linux isdn (ippp*) interfaces is integrated, so that the uptests should
     also work for these.
-  * dev: this is a variant of the if uptest for use with Linux dial-on-demand
+  • dev: this is a variant of the if uptest for use with Linux dial-on-demand
     ppp interfaces. In addition to performing an if-style interface uptest, it
     also tests whether a specified program (e.g. pppd) owns a lock to a given
     (modem-) device.
-  * exec: a given shell command line is executed and the exit status of the
+  • exec: a given shell command line is executed and the exit status of the
     whole command line (which is normally the exit status of the last command)
     is evaluated. If it is not zero, the server is regarded to be not
     available. This is a very flexible testing method with which it should be
     able to perform virtually any needed test.
-  * query: New in version 1.2: This works like the ping test, except it sends
+  • query: New in version 1.2: This works like the ping test, except it sends
     an (empty) DNS query to the remote server. If the server sends a
     well-formed response back within the timeout period (except SERVFAIL), it
     will be regarded as available. This test is useful if a remote server does
@@ -157,13 +157,13 @@ organized roughly in zones but have not complete zone declarations, so I
 generally do not use the term "zone" for them, but rather "local records".
 These are the local record types pdnsd can understand:
 
-  * SOA (information about the name server)
-  * A (domain-name-to-address mapping)
-  * PTR (pointer, used normally for address-to-domain-name mapping)
-  * NS (name server, generated automatically by pdnsd for any local record set)
-  * CNAME (canonical host name)
-  * MX (mail exchange for the domain)
-  * TXT (arbitrary text strings, often used for Sender Policy Framework)
+  • SOA (information about the name server)
+  • A (domain-name-to-address mapping)
+  • PTR (pointer, used normally for address-to-domain-name mapping)
+  • NS (name server, generated automatically by pdnsd for any local record set)
+  • CNAME (canonical host name)
+  • MX (mail exchange for the domain)
+  • TXT (arbitrary text strings, often used for Sender Policy Framework)
 
 You can specify these records in the configuration file.
 You may "source" a file in a format like that used in the /etc/hosts file, that
@@ -181,30 +181,31 @@ As mentioned, pdnsd currently runs under Linux, FreeBSD and Cygwin. Other BSD
 flavours may or may not work (feedback is very welcome!). The system and
 software requirements under Linux are:
 
-  * Kernel version >2.2.0
-  * glibc version >2.0.1 (aka libc6) with LinuxThreads (normally included) or
+  • Kernel version >2.2.0
+  • glibc version >2.0.1 (aka libc6) with LinuxThreads (normally included) or
     NPTL (Native Posix Thread Library, recommended).
     Due to a bug, pdnsd 0.9.8 does not run with glibc2.1.1. This behaviour was
     fixed in pdnsd 0.9.9.
-  * For IPv6: glibc>=2.1
+  • For IPv6: glibc>=2.1
+  • For TLS: openssl>=3.0
 
 The system requirements under FreeBSD are:
 
-  * FreeBSD versions >=2.6 (prior ones may or may not work)
-  * For IPv6: FreeBSD >=4.0 is recommended (no idea if it runs on prior
+  • FreeBSD versions >=2.6 (prior ones may or may not work)
+  • For IPv6: FreeBSD >=4.0 is recommended (no idea if it runs on prior
     versions)
 
 The common software requirements for all supported systems are:
 
-  * GCC, preferably egcs-2.* or 3.* (other compilers are currently not
+  • GCC, preferably egcs-2.* or 3.* (other compilers are currently not
     supported; the needed patch for another compiler should not be difficult,
     however)
-  * GNU or BSD make
-  * the standard commands install, grep, sed, awk, touch and which (along with
+  • GNU or BSD make
+  • the standard commands install, grep, sed, awk, touch and which (along with
     the REALLY standard ones mv, cp, ln, rm, pwd, test, echo, cat, mkdir,
     chown, chmod, tar). In any standard Unix installation, this should be no
     problem.
-  * for hacking and building own packages, you might also need gzip, bzip2,
+  • for hacking and building own packages, you might also need gzip, bzip2,
     perl and rpmbuild
 
 
@@ -276,7 +277,7 @@ Kevin A. Burton,
 Juliusz Chroboczek,
 Joachim Dorner,
 Stefan Erhardt,
-Stefan F?rster,
+Stefan Förster,
 Mike Hammer,
 Jonathan Hudson,
 Dan Jacobson,
@@ -284,19 +285,19 @@ Byrial Jensen,
 Patrick Loschmidt,
 James MacLean,
 Fraser McCrossan,
-Michael M?ller,
+Michael Müller,
 Erich Reitz,
 Brian Schroeder,
 Milan P. Stanic,
 Michael Steiner,
 Norbert Steinl,
 Markus Storm,
-Michael Str?der,
+Michael Ströder,
 Alan Swanson,
 Eelco Vriezekolk.
 
 
--------------------------------------------------------------------------------
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Thomas Moestl and Paul A. Rombouts
 
