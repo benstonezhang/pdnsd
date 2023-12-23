@@ -636,7 +636,7 @@ int main(int argc,char *argv[])
 			_exit(1);
 		}
 
-		SSL_CTX_set_security_level(global.ssl_ctx,3);
+		SSL_CTX_set_security_level(global.ssl_ctx,2);
 		SSL_CTX_set_verify(global.ssl_ctx,SSL_VERIFY_PEER,tls_verify_callback);
 		SSL_CTX_set_verify_depth(global.ssl_ctx,3);
 		SSL_CTX_set_default_verify_paths(global.ssl_ctx);
