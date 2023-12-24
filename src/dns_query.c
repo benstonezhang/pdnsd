@@ -123,7 +123,8 @@ typedef struct {
 	int                 s_errno;
 	unsigned short      qtype;
 #ifdef ENABLE_TLS_QUERIES
-	char 		    ssl_err[256];
+	int		    ssl_err;
+	char 		    ssl_err_str[256];
 #endif
 } query_stat_t;
 typedef DYNAMIC_ARRAY(query_stat_t) *query_stat_array;
@@ -859,7 +860,10 @@ inline static void switch_to_tcp(query_stat_t *st)
  * have returned -1 (which means "call again") as last step of the last state handling. */
 static int p_query_sm(query_stat_t *st)
 {
-	int retval=RC_SERVFAIL,rv, err;
+	int retval=RC_SERVFAIL,rv;
+#ifdef ENABLE_TLS_QUERIES
+	st->ssl_err=SSL_ERROR_NONE;
+#endif
 
 #if !defined(NO_TCP_QUERIES) && !defined(NO_UDP_QUERIES)
  tryagain:
@@ -944,32 +948,32 @@ static int p_query_sm(query_stat_t *st)
 			DEBUG_MSG("Initialize SSL context\n");
 			st->ssl=SSL_new(global.ssl_ctx);
 			if(st->ssl==NULL) {
-				ERR_error_string_n(ERR_get_error(),st->ssl_err,sizeof(st->ssl_err));
-				DEBUG_MSG("TLS context Initialization failed: %s\n",st->ssl_err);
+				ERR_error_string_n(ERR_get_error(),st->ssl_err_str,sizeof(st->ssl_err_str));
+				DEBUG_MSG("TLS context Initialization failed: %s\n",st->ssl_err_str);
 				break;
 			}
-			err=SSL_set_fd(st->ssl,st->sock);
-			if (err!=1) {
-				ERR_error_string_n(SSL_get_error(st->ssl,err),st->ssl_err,sizeof(st->ssl_err));
-				DEBUG_MSG("TLS set socket error: %s\n",st->ssl_err);
+			rv=SSL_set_fd(st->ssl,st->sock);
+			if (rv!=1) {
+				ERR_error_string_n(SSL_get_error(st->ssl,rv),st->ssl_err_str,sizeof(st->ssl_err_str));
+				DEBUG_MSG("TLS set socket error: %s\n",st->ssl_err_str);
 				break;
 			}
 			st->state=QS_TLSCONNECT;
 		}
 	case QS_TLSCONNECT:
 		if (global.query_method==C_TLS) {
-			err=SSL_connect(st->ssl);
-			if (err!=1) {
-				err=SSL_get_error(st->ssl,err);
-				if ((err==SSL_ERROR_WANT_READ)||(err==SSL_ERROR_WANT_WRITE)) {
+			rv=SSL_connect(st->ssl);
+			if (rv!=1) {
+				st->ssl_err=SSL_get_error(st->ssl,rv);
+				if ((st->ssl_err==SSL_ERROR_WANT_READ)||(st->ssl_err==SSL_ERROR_WANT_WRITE)) {
 					st->state=QS_TCPWRITE;
 					return -1;
 				}
-				if (err==SSL_ERROR_WANT_CONNECT) {
+				if (st->ssl_err==SSL_ERROR_WANT_CONNECT) {
 					return -1;
 				}
-				ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
-				DEBUG_PDNSDA_MSG("TLS connection failed by %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+				ERR_error_string_n(st->ssl_err,st->ssl_err_str,sizeof(st->ssl_err_str));
+				DEBUG_PDNSDA_MSG("TLS connection failed by %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err_str);
 				break;
 			}
 		}
@@ -985,11 +989,11 @@ static int p_query_sm(query_stat_t *st)
 				if (global.query_method==C_TLS) {
 					rv=SSL_write(st->ssl,((unsigned char *)st->msg)+st->iolen,rem);
 					if(rv<=0) {
-						err=SSL_get_error(st->ssl,rv);
-						if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
+						st->ssl_err=SSL_get_error(st->ssl,rv);
+						if (st->ssl_err==SSL_ERROR_WANT_READ || st->ssl_err==SSL_ERROR_WANT_WRITE)
 							return -1;
-						ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
-						DEBUG_PDNSDA_MSG("Error while sending TLS data to %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+						ERR_error_string_n(st->ssl_err,st->ssl_err_str,sizeof(st->ssl_err_str));
+						DEBUG_PDNSDA_MSG("Error while sending TLS data to %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err_str);
 						break;
 					}
 				}
@@ -1032,11 +1036,11 @@ static int p_query_sm(query_stat_t *st)
 			if (global.query_method==C_TLS) {
 				rv=SSL_read(st->ssl,&recvl_net,sizeof(recvl_net));
 				if (rv<=0) {
-					err=SSL_get_error(st->ssl,rv);
-					if (err==SSL_ERROR_WANT_READ)
+					st->ssl_err=SSL_get_error(st->ssl,rv);
+					if (st->ssl_err==SSL_ERROR_WANT_READ)
 						return -1;
-					ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
-					DEBUG_PDNSDA_MSG("Error while reading TLS data from %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+					ERR_error_string_n(st->ssl_err,st->ssl_err_str,sizeof(st->ssl_err_str));
+					DEBUG_PDNSDA_MSG("Error while reading TLS data from %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err_str);
 					break;
 				}
 			}
@@ -1064,11 +1068,11 @@ static int p_query_sm(query_stat_t *st)
 				if (global.query_method==C_TLS) {
 					rv=SSL_read(st->ssl,((unsigned char *)st->recvbuf)+offset,rem);
 					if (rv<=0) {
-						err=SSL_get_error(st->ssl,rv);
-						if (err==SSL_ERROR_WANT_READ)
+						st->ssl_err=SSL_get_error(st->ssl,rv);
+						if (st->ssl_err==SSL_ERROR_WANT_READ)
 							return -1;
-						ERR_error_string_n(err,st->ssl_err,sizeof(st->ssl_err));
-						DEBUG_PDNSDA_MSG("Error while reading TLS data from %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err);
+						ERR_error_string_n(st->ssl_err,st->ssl_err_str,sizeof(st->ssl_err_str));
+						DEBUG_PDNSDA_MSG("Error while reading TLS data from %s: %s\n",PDNSDA2STR(PDNSD_A(st)),st->ssl_err_str);
 						break;
 					}
 				}
@@ -2365,28 +2369,53 @@ static int p_recursive_query(query_stat_array q, const unsigned char *name, int 
 								maxfd=qs->sock;
 								PDNSD_ASSERT(maxfd<FD_SETSIZE,"socket file descriptor exceeds FD_SETSIZE.");
 							}
-
-							switch (qs->state) {
-							QS_READ_CASES:
-								FD_SET(qs->sock,&reads);
-								break;
-							QS_WRITE_CASES:
-								FD_SET(qs->sock,&writes);
-								break;
-							}
 #else
 							polls[pc].fd=qs->sock;
+#endif
+#ifdef ENABLE_TLS_QUERIES
+							if (qs->ssl_err!=SSL_ERROR_NONE)
+								switch (qs->ssl_err) {
+								case SSL_ERROR_WANT_READ:
+#ifdef NO_POLL
+									FD_SET(qs->sock,&reads);
+#else
+									polls[pc].events=POLLIN;
+#endif
+									break;
+								case SSL_ERROR_WANT_WRITE:
+#ifdef NO_POLL
+									FD_SET(qs->sock,&writes);
+#else
+									polls[pc].events=POLLOUT;
+#endif
+									break;
+#ifndef NO_POLL
+								default:
+									polls[pc].events=0;
+#endif
+								}
+							else
+#endif
 							switch (qs->state) {
 							QS_READ_CASES:
+#ifdef NO_POLL
+								FD_SET(qs->sock,&reads);
+#else
 								polls[pc].events=POLLIN;
+#endif
 								break;
 							QS_WRITE_CASES:
+#ifdef NO_POLL
+								FD_SET(qs->sock,&writes);
+#else
 								polls[pc].events=POLLOUT;
+#endif
 								break;
+#ifndef NO_POLL
 							default:
 								polls[pc].events=0;
-							}
 #endif
+							}
 							pc++;
 						}
 					}
@@ -2492,33 +2521,52 @@ static int p_recursive_query(query_stat_array q, const unsigned char *name, int 
 							int srv_event=0;
 							/* This detection may seem suboptimal, but normally, we have at most 2-3 parallel
 							 * queries, and anything else would be higher overhead, */
-#ifdef NO_POLL
-							switch (qs->state) {
-							QS_READ_CASES:
-								srv_event=FD_ISSET(qs->sock,&reads);
-								break;
-							QS_WRITE_CASES:
-								srv_event=FD_ISSET(qs->sock,&writes);
-								break;
-							}
-#else
+#ifndef NO_POLL
 							do {
 								PDNSD_ASSERT(ic<pc, "file descriptor not found in poll() array");
 								k=ic++;
 							} while(polls[k].fd!=qs->sock);
+#endif
 							/*
 							 * In case of an error, reenter the state machine
 							 * to catch it.
 							 */
+#ifdef ENABLE_TLS_QUERIES
+							if (qs->ssl_err!=SSL_ERROR_NONE)
+								switch (qs->ssl_err) {
+								case SSL_ERROR_WANT_READ:
+#ifdef NO_POLL
+									srv_event=FD_ISSET(qs->sock,&reads);
+#else
+									srv_event=polls[k].revents&(POLLIN|POLLERR|POLLHUP|POLLNVAL);
+#endif
+									break;
+								case SSL_ERROR_WANT_WRITE:
+#ifdef NO_POLL
+									srv_event=FD_ISSET(qs->sock,&writes);
+#else
+									srv_event=polls[k].revents&(POLLOUT|POLLERR|POLLHUP|POLLNVAL);
+#endif
+									break;
+								}
+							else
+#endif
 							switch (qs->state) {
 							QS_READ_CASES:
+#ifdef NO_POLL
+								srv_event=FD_ISSET(qs->sock,&reads);
+#else
 								srv_event=polls[k].revents&(POLLIN|POLLERR|POLLHUP|POLLNVAL);
+#endif
 								break;
 							QS_WRITE_CASES:
+#ifdef NO_POLL
+								srv_event=FD_ISSET(qs->sock,&writes);
+#else
 								srv_event=polls[k].revents&(POLLOUT|POLLERR|POLLHUP|POLLNVAL);
+#endif
 								break;
 							}
-#endif
 							if (srv_event) {
 								--nevents;
 							retryquery2:
@@ -3830,38 +3878,56 @@ int query_uptest(pdnsd_a *addr, int port, const unsigned char *name, time_t time
 			FD_ZERO(&reads);
 			FD_ZERO(&writes);
 			PDNSD_ASSERT(qs.sock<FD_SETSIZE,"socket file descriptor exceeds FD_SETSIZE.");
-			switch (qs.state) {
-			QS_READ_CASES:
-				FD_SET(qs.sock,&reads);
-				break;
-			QS_WRITE_CASES:
-				FD_SET(qs.sock,&writes);
-				break;
-			}
-			tv.tv_sec=timeout>tpassed?timeout-tpassed:0;
-			tv.tv_usec=0;
-			/* There is a possible race condition with the arrival of a signal here,
-			   but it is so unlikely to be a problem in practice that doing
-			   this properly is not worth the trouble.
-			*/
-			if(is_interrupted_servstat_thread()) {
-				DEBUG_MSG("server status thread interrupted.\n");
-				p_cancel_query(&qs);
-				return 0;
-			}
-			event=select(qs.sock+1,&reads,&writes,NULL,&tv);
 #else
 			struct pollfd pfd;
 			pfd.fd=qs.sock;
-			switch (qs.state) {
-			QS_READ_CASES:
-				pfd.events=POLLIN;
-				break;
-			QS_WRITE_CASES:
-				pfd.events=POLLOUT;
-				break;
-			default:
-				pfd.events=0;
+#endif
+#ifdef ENABLE_TLS_QUERIES
+			if (qs.ssl_err!=SSL_ERROR_NONE) {
+				switch(qs.ssl_err) {
+					case SSL_ERROR_WANT_READ:
+#ifdef NO_POLL
+						FD_SET(qs.sock,&reads);
+#else
+						pfd.events=POLLIN;
+#endif
+						break;
+					case SSL_ERROR_WANT_WRITE:
+#ifdef NO_POLL
+						FD_SET(qs.sock,&writes);
+#else
+						pfd.events=POLLOUT;
+#endif
+						break;
+#ifndef NO_PILL
+					default:
+						pfd.events=0;
+#endif
+				}
+			}
+			else
+#endif
+			{
+				switch(qs.state) {
+					QS_READ_CASES:
+#ifdef NO_POLL
+						FD_SET(qs.sock,&reads);
+#else
+						pfd.events=POLLIN;
+#endif
+						break;
+					QS_WRITE_CASES:
+#ifdef NO_POLL
+						FD_SET(qs.sock,&writes);
+#else
+						pfd.events=POLLOUT;
+#endif
+						break;
+#ifndef NO_PILL
+					default:
+						pfd.events=0;
+#endif
+				}
 			}
 			/* There is a possible race condition with the arrival of a signal here,
 			   but it is so unlikely to be a problem in practice that doing
@@ -3872,6 +3938,11 @@ int query_uptest(pdnsd_a *addr, int port, const unsigned char *name, time_t time
 				p_cancel_query(&qs);
 				return 0;
 			}
+#ifdef NO_POLL
+			tv.tv_sec=timeout>tpassed?timeout-tpassed:0;
+			tv.tv_usec=0;
+			event=select(qs.sock+1,&reads,&writes,NULL,&tv);
+#else
 			event=poll(&pfd,1,timeout>tpassed?(timeout-tpassed)*1000:0);
 #endif
 			if (event<0) {
@@ -3890,26 +3961,46 @@ int query_uptest(pdnsd_a *addr, int port, const unsigned char *name, time_t time
 				return 0;
 			}
 			event=0;
+#ifdef ENABLE_TLS_QUERIES
+			if (qs.ssl_err!=SSL_ERROR_NONE) {
+				switch(qs.ssl_err) {
+					case SSL_ERROR_WANT_READ:
 #ifdef NO_POLL
-			switch (qs.state) {
-			QS_READ_CASES:
-				event=FD_ISSET(qs.sock,&reads);
-				break;
-			QS_WRITE_CASES:
-				event=FD_ISSET(qs.sock,&writes);
-				break;
-			}
+						FD_SET(qs.sock,&reads);
 #else
-			switch (qs.state) {
-			QS_READ_CASES:
-				event=pfd.revents&(POLLIN|POLLERR|POLLHUP|POLLNVAL);
-				break;
-			QS_WRITE_CASES:
-				event=pfd.revents&(POLLOUT|POLLERR|POLLHUP|POLLNVAL);
-				break;
-			}
+						event=pfd.revents&(POLLIN|POLLERR|POLLHUP|POLLNVAL);
 #endif
-			if(event) {
+						break;
+					case SSL_ERROR_WANT_WRITE:
+#ifdef NO_POLL
+						FD_SET(qs.sock,&writes);
+#else
+						event=pfd.revents&(POLLOUT|POLLERR|POLLHUP|POLLNVAL);
+#endif
+						break;
+				}
+			}
+			else
+#endif
+			{
+				switch(qs.state) {
+					QS_READ_CASES:
+#ifdef NO_POLL
+						event=FD_ISSET(qs.sock,&reads);
+#else
+						event=pfd.revents&(POLLIN|POLLERR|POLLHUP|POLLNVAL);
+#endif
+						break;
+					QS_WRITE_CASES:
+#ifdef NO_POLL
+						event=FD_ISSET(qs.sock,&writes);
+#else
+						event=pfd.revents&(POLLOUT|POLLERR|POLLHUP|POLLNVAL);
+#endif
+						break;
+				}
+			}
+			if (event) {
 				rv=p_exec_query(NULL, name, T_A, &qs, NULL, NULL);
 				if(rv!=-1) break;
 			}
