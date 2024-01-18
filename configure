@@ -745,6 +745,7 @@ enable_udp_queries
 enable_tcp_queries
 enable_tls_queries
 with_query_method
+enable_tree_search
 enable_tcp_server
 enable_src_addr_disc
 enable_socket_locking
@@ -1413,6 +1414,7 @@ Optional Features:
   --disable-udp-queries       Disable udp as query method.
   --disable-tcp-queries       Disable tcp as query method.
   --enable-tls-queries        Enable tls as query method.
+  --enable-tree-search        Enable tree search for domain include_file/exclude_file.
   --disable-tcp-server        Disable the TCP serving ability of pdnsd
   --disable-src-addr-disc     Disable the UDP source address discovery
   --enable-socket-locking     Enable the UDP socket locking
@@ -4628,6 +4630,15 @@ _ACEOF
 test $tls_queries = "yes" && cat >>confdefs.h <<\_ACEOF
 #define ENABLE_TLS_QUERIES 1
 _ACEOF
+
+
+# Check whether --enable-tree-search was given.
+if test "${enable_tree_search+set}" = set; then
+  enableval=$enable_tree_search; cat >>confdefs.h <<\_ACEOF
+#define ENABLE_TREE_SEARCH 1
+_ACEOF
+
+fi
 
 
 # Check whether --enable-tcp-server was given.

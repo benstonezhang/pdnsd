@@ -43,6 +43,9 @@
 #endif
 #include "ipvers.h"
 #include "list.h"
+#ifdef ENABLE_TREE_SEARCH
+#include "ntree.h"
+#endif
 
 /* From main.c */
 #if DEBUG>0
@@ -113,6 +116,10 @@ typedef struct {
 	short            rejectpolicy;
 	short            policy;
 	slist_array      alist;
+#ifdef ENABLE_TREE_SEARCH
+	ntree_node_t 	*inc_tree;
+	ntree_node_t 	*exc_tree;
+#endif
 	atup_array       atup_a;
 	a4_array         reject_a4;
 #if ALLOW_LOCAL_AAAA

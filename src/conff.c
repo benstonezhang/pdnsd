@@ -103,6 +103,10 @@ servparm_t serv_presets={
   rejectpolicy:      C_FAIL,
   policy:            C_INCLUDED,
   alist:             NULL,
+#ifdef ENABLE_TREE_SEARCH
+  inc_tree:	     NULL,
+  exc_tree:	     NULL,
+#endif
   atup_a:            NULL,
   reject_a4:         NULL,
 #if ALLOW_LOCAL_AAAA

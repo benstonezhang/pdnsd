@@ -296,7 +296,11 @@ static const char *reject_add(servparm_t *serv, const char *ipstr);
 static void check_localaddrs(servparm_t *serv);
 static int read_resolv_conf(const char *fn, atup_array *ata, char **errstr);
 static const char *slist_add(slist_array *sla, const char *nm, unsigned int len, int tp);
+#ifdef ENABLE_TREE_SEARCH
+static int read_cast_tree(const char *strbuf, ntree_node_t *ata, char **errstr, int op);
+#else
 static int read_cast_list(const char *strbuf, slist_array *ata, char **errstr, int op);
+#endif
 #define include_list_add(sla,nm,len) slist_add(sla,nm,len,C_INCLUDED)
 #define exclude_list_add(sla,nm,len) slist_add(sla,nm,len,C_EXCLUDED)
 static const char *zone_add(zone_array *za, const char *zone, unsigned int len);
@@ -1172,7 +1176,12 @@ int confparse(FILE* in, char *prestr, globparm_t *global, servparm_array *server
 	    SCAN_STRING(p,strbuf,len);
 	    {
 	      char *errmsg;
+#ifdef ENABLE_TREE_SEARCH
+	      if (server.inc_tree==NULL) server.inc_tree=ntree_init();
+	      if (!read_cast_tree(strbuf,server.inc_tree,&errmsg,C_INCLUDED)) {
+#else
 	      if (!read_cast_list(strbuf,&server.alist,&errmsg,C_INCLUDED)) {
+#endif
 	        if(errmsg) {REPORT_ERROR(errmsg); free(errmsg);}
 	        else *errstr=NULL;
 	        PARSERROR;
@@ -1188,7 +1197,12 @@ int confparse(FILE* in, char *prestr, globparm_t *global, servparm_array *server
 	    SCAN_STRING(p,strbuf,len);
 	    {
 	      char *errmsg;
+#ifdef ENABLE_TREE_SEARCH
+	      if (server.exc_tree==NULL) server.exc_tree=ntree_init();
+	      if (!read_cast_tree(strbuf,server.exc_tree,&errmsg,C_EXCLUDED)) {
+#else
 	      if (!read_cast_list(strbuf,&server.alist,&errmsg,C_EXCLUDED)) {
+#endif
 	          if(errmsg) {REPORT_ERROR(errmsg); free(errmsg);}
 	          else *errstr=NULL;
 	          PARSERROR;
@@ -2156,8 +2170,11 @@ static const char *zone_add(zone_array *za, const char *zone, unsigned int len)
 }
 
 /* Read the include/exclude domain/host list from file. */
-static int read_cast_list(const char *fn, slist_array *ata, char **errstr,
-                          int op)
+#ifdef ENABLE_TREE_SEARCH
+static int read_cast_tree(const char *fn, ntree_node_t *ata, char **errstr, int op)
+#else
+static int read_cast_list(const char *fn, slist_array *ata, char **errstr, int op)
+#endif
 {
   int rv=0;
   FILE *f;
@@ -2190,6 +2207,9 @@ static int read_cast_list(const char *fn, slist_array *ata, char **errstr,
       if(!*++p) goto nextline;
     } while(!isspace(*p));
     len=p-ps;
+#ifdef ENABLE_TREE_SEARCH
+    if(ntree_add_n(ata,ps,(int)len)>=0) goto nextline;
+#endif
     if((_err=slist_add(ata,ps,len,op))) {
       report_errorf("include file", linenr, "%s", _err);
       goto nextline;

@@ -3056,10 +3056,19 @@ static int auth_ok(query_stat_array q, const unsigned char *name, int thint, dns
 
 /*
  * This checks the given name to resolve against the access list given for the server using the
- * include=, exclude= and policy= parameters.
+ * include_file=, exclude_file=, include=, exclude= and policy= parameters.
  */
 static int use_server(servparm_t *s, const unsigned char *name)
 {
+#ifdef ENABLE_TREE_SEARCH
+	if (s->exc_tree) {
+		if (ntree_search(s->exc_tree, name)) return 0;
+	}
+	if (s->inc_tree) {
+		if (ntree_search(s->inc_tree, name)) return 1;
+	}
+#endif
+
 	int i,n=DA_NEL(s->alist);
 
 	for (i=0;i<n;i++) {
