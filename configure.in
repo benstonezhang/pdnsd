@@ -163,10 +163,6 @@ test $udp_queries != "yes" && AC_DEFINE(NO_UDP_QUERIES)
 test $tcp_queries != "yes" && AC_DEFINE(NO_TCP_QUERIES)
 test $tls_queries = "yes" && AC_DEFINE(ENABLE_TLS_QUERIES)
 
-AC_ARG_ENABLE(tree-search,
-[  --enable-tree-search        Enable tree search for domain include_file/exclude_file.],
-  AC_DEFINE(ENABLE_TREE_SEARCH))
-
 AC_ARG_ENABLE(tcp-server,
 [  --disable-tcp-server        Disable the TCP serving ability of pdnsd],
   have_tcp_server=$enableval)

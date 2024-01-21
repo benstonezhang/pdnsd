@@ -64,10 +64,6 @@
 #undef NO_TCP_QUERIES
 #undef ENABLE_TLS_QUERIES
 
-/* With the following option, you can enable tree search for domains defined in
- * options include_file and exclude_file */
-#undef ENABLE_TREE_SEARCH
-
 /* With the following option, you can disable the TCP server functionality
  * of pdnsd. Nearly no program does TCP queries, so you probably can do
  * this safely and save some executable space and one thread.

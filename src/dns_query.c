@@ -3060,16 +3060,14 @@ static int auth_ok(query_stat_array q, const unsigned char *name, int thint, dns
  */
 static int use_server(servparm_t *s, const unsigned char *name)
 {
-#ifdef ENABLE_TREE_SEARCH
+	int i,n=DA_NEL(s->alist);
+
 	if (s->exc_tree) {
 		if (ntree_search(s->exc_tree, name)) return 0;
 	}
 	if (s->inc_tree) {
 		if (ntree_search(s->inc_tree, name)) return 1;
 	}
-#endif
-
-	int i,n=DA_NEL(s->alist);
 
 	for (i=0;i<n;i++) {
 		slist_t *sl=&DA_INDEX(s->alist,i);

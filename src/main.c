@@ -467,6 +467,13 @@ int main(int argc,char *argv[])
 			fputc('\n',stderr);
 			exit(3);
 		}
+		for (i=0; i<DA_NEL(servers); i++) {
+			servparm_t *sp=&DA_INDEX(servers,i);
+			if (sp->inc_tree) log_info(2,"server \"%s\" include search tree memory %ld bytes",
+						   sp->label,ntree_stat(sp->inc_tree));
+			if (sp->exc_tree) log_info(2,"server \"%s\" exclude search tree memory %ld bytes",
+						   sp->label,ntree_stat(sp->exc_tree));
+		}
 	}
 
 	if(cmdline.pdnsduser) {
