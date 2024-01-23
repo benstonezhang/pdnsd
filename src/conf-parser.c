@@ -2191,7 +2191,7 @@ static int read_cast_tree(const char *fn, ntree_node_t *atree, slist_array *ata,
       if(!*++p) goto nextline;
     } while(!isspace(*p));
     len=p-ps;
-    if(ntree_add_n(atree,ps,(int)len)>=0) goto nextline;
+    if(ntree_add_n(atree,ps,(int)len)>0) goto nextline;
     if((_err=slist_add(ata,ps,len,op))) {
       report_errorf("include file", linenr, "%s", _err);
       goto nextline;

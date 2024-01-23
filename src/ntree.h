@@ -24,14 +24,13 @@ extern void ntree_free(ntree_node_t *);
  * add domain/host to search tree
  * return: 1 - added; 0 - skipped; -1 - error
  */
-extern int ntree_add(ntree_node_t *,const char *);
 extern int ntree_add_n(ntree_node_t *,const char *,int);
 
 /*
  * search the domain/host exist
- * return: 1 - found; 0 - not found
+ * return: length of the match in name elements.
  */
-extern int ntree_search(const ntree_node_t *,const unsigned char *);
+extern int ntree_find(const ntree_node_t *,const unsigned char *);
 
 extern size_t ntree_stat(const ntree_node_t *);
 

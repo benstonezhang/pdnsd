@@ -138,9 +138,9 @@ static const char chars_offset[]={
 	-1, // 0x7f
 };
 
-static const int dot_index=26;
 static const int node_min_size=sizeof(ntree_node_t);
-static const ntree_node_t default_leaf={0};
+static const int dot_index=26;
+static const ntree_node_t dot_leaf={0};
 
 #define CHAR_DOT '.'
 #define NTREE_NODES_COUNT 38
@@ -153,32 +153,28 @@ static inline int ntree_leaf_size(int size){
 	return size>NTREE_NODE_CHAR_COUNT?(int)LEAF_SIZE(size):node_min_size;
 }
 
-ntree_node_t *ntree_init(void){
+ntree_node_t *ntree_init(){
 	ntree_node_t *root=calloc(1,NODE_SIZE(NTREE_NODES_COUNT));
-	if (root!=NULL) root->arr_len=NTREE_NODES_COUNT;
+	if (root!=NULL) {
+		root->arr_len=NTREE_NODES_COUNT;
+	}
 	return root;
 }
 
-void ntree_free(ntree_node_t *base){
-	int i,l,level=0;
+void ntree_free(ntree_node_t *root){
+	int i,level=0;
 	ntree_node_t *node,*node_stack[DNSNAMEBUFSIZE];
 	unsigned char offset[DNSNAMEBUFSIZE];
 
-	node_stack[0]=base;
+	node_stack[0]=root;
 	offset[0]=0;
 	do {
 		entry:
-		base=node_stack[level];
-		i=offset[level];
-		l=base->arr_len;
-		while (i<l) {
-			node=base->nodes[i];
-			if ((node!=NULL)&&(node!=base)&&(node!=&default_leaf)) {
-				if (node->arr_len==0) {
-					// leaf node
-					free(node);
-					base->nodes[i]=NULL;
-				} else {
+		root=node_stack[level];
+		for (i=offset[level];i<root->arr_len;i++) {
+			node=root->nodes[i];
+			if ((node!=NULL)&&(node!=root)&&(node!=&dot_leaf)) {
+				if (node->arr_len) {
 					// branch node
 					offset[level]=i+1;
 					level++;
@@ -186,35 +182,53 @@ void ntree_free(ntree_node_t *base){
 					offset[level]=0;
 					goto entry;
 				}
+				// leaf node
+				free(node);
 			}
-			i++;
 		}
-		free(base);
+		free(root);
 		level--;
 	} while (level>=0);
 }
 
-static inline void ntree_revert_copy_str(ntree_node_t *node,const char *s,int l){
+static inline void ntree_revert_copy_str(char *dst,const char *src,int l){
 	int i=0;
-	node->str_len=l;
-	while (l) node->str[i++]=s[--l];
+	while (l) dst[i++]=src[--l];
 }
 
 static inline void ntree_node_copy_str(ntree_node_t *dst,const ntree_node_t *src,const int l){
-	for (int i=0;i<l;i++) dst->str[i]=src->str[i];
+	int i;
+	for (i=0;i<l;i++) dst->str[i]=src->str[i];
 	dst->str_len=l;
 }
 
-static ntree_node_t *ntree_branch_create(int size){
+static int ntree_name_to_str(char *dst,const unsigned char *src){
+	int i,n=0;
+	unsigned char c;
+	while (*src) {
+		if (n) {
+			*dst++=CHAR_DOT;
+			n++;
+		}
+		c=*src++;
+		for (i=0;i<c;i++) *dst++=*(char *)src++;
+		n+=c;
+	}
+	*dst=0;
+	return n;
+}
+
+static ntree_node_t *ntree_branch_create(const int size){
 	ntree_node_t *node=calloc(1,NODE_SIZE(size));
 	if (node!=NULL) node->arr_len=size;
 	return node;
 }
 
-static ntree_node_t *ntree_branch_expand(ntree_node_t *base,const int size){
-	ntree_node_t *node=realloc(base,NODE_SIZE(size));
+static ntree_node_t *ntree_branch_expand(ntree_node_t *node,const int size){
+	node=realloc(node,NODE_SIZE(size));
 	if (node!=NULL) {
-		for (int i=node->arr_len;i<size;i++) node->nodes[i]=NULL;
+		int i;
+		for (i=node->arr_len;i<size;i++) node->nodes[i]=NULL;
 		node->arr_len=size;
 	}
 	return node;
@@ -222,238 +236,253 @@ static ntree_node_t *ntree_branch_expand(ntree_node_t *base,const int size){
 
 static ntree_node_t *ntree_leaf_create(const char *s,int l){
 	ntree_node_t *node;
-	if (l==0) return (ntree_node_t *)&default_leaf;
-	node=malloc(ntree_leaf_size(l));
-	if (node!=NULL) {
-		node->arr_len=0;
-		ntree_revert_copy_str(node,s,l);
+	if (l) {
+		node=malloc(ntree_leaf_size(l));
+		if (node!=NULL) {
+			node->arr_len=0;
+			node->str_len=l;
+			ntree_revert_copy_str(node->str,s,l);
+		}
+	} else {
+		node=(ntree_node_t *)&dot_leaf;
 	}
 	return node;
 }
 
-static ntree_node_t *ntree_node_shrink(ntree_node_t *base,int l){
-	int n=base->str_len,j=n-l;
+static ntree_node_t *ntree_node_shrink(ntree_node_t *node,int l){
+	int n=node->str_len,j=n-l;
 	if (j) {
-		for (int i=0,k=l;i<j;i++,k++) base->str[i]=base->str[k];
-		base->str_len=j;
-		if ((base->arr_len==0)&&(n>NTREE_NODE_CHAR_COUNT)) base=realloc(base,ntree_leaf_size(j));
+		int i,k;
+		for (i=0,k=l;i<j;i++,k++) node->str[i]=node->str[k];
+		node->str_len=j;
+		if ((node->arr_len==0)&&(n>NTREE_NODE_CHAR_COUNT)) {
+			node=realloc(node,ntree_leaf_size(j));
+		}
 	} else {
-		if (base->arr_len) {
-			base->str_len=0;
+		if (node->arr_len) {
+			node->str_len=0;
 		} else {
-			free(base);
-			base=(ntree_node_t *)&default_leaf;
+			free(node);
+			node=(ntree_node_t *)&dot_leaf;
 		}
 	}
-	return base;
+	return node;
 }
 
-int ntree_insert(ntree_node_t **base_ptr,const char *s,const int l){
-	ntree_node_t *base=*base_ptr;
-	int j,m,n;
+int ntree_add_n(ntree_node_t *root,const char *s,const int n){
+	ntree_node_t **base_ptr,*base,*node;
+	int i,j,l,m,m1,m2;
+	char c1,c2;
 
-	if (base==NULL) {
-		base=ntree_leaf_create(s,l);
-		*base_ptr=base;
-		return base?1:0;
+	// check chars, only limited chars allowed
+	for (l=0;l<n;l++) if ((s[l]&0x80)||(NODE_OFFSET(s[l])<0)) return 0;
+
+	// skip first dot char
+	if (s[--l]==CHAR_DOT) l--;
+
+	m2=NODE_OFFSET(s[l]);
+	if ((base=root->nodes[m2])==NULL) {
+		if ((node=ntree_leaf_create(s,l))) {
+			root->nodes[m2]=node;
+			return 1;
+		}
+		return -1;
 	}
 
-	j=l-1;
-	n=base->str_len;
-	if (base==&default_leaf) {
-		// replace the fixed leaf by branch node
-		ntree_node_t *node;
-		m=NODE_OFFSET(s[j]);
-		if (m<dot_index) m=dot_index;
-		node=ntree_branch_create(m+1);
-		if (node==NULL) return -1;
-		node->nodes[dot_index]=(ntree_node_t *)&default_leaf;
-		node->nodes[m]=ntree_leaf_create(s,j);
-		*base_ptr=node;
-		return node->nodes[m]?1:0;
-	}
+	base_ptr=&root->nodes[m2];
+	l--;
 
-	if (n) {
-		ntree_node_t *node;
-		int i,k,m1,m2;
-		char c1,c2;
+	for (;;) {
+		i=0;
+		m=base->str_len;
 
-		for (i=0;i<n;i++,j--) {
+		while (i<m) {
 			c1=base->str[i];
-			c2=s[j];
+			c2=s[l];
+
+			if (c1!=c2) {
+				// name differ with current node string, split current node
+				m1=NODE_OFFSET(c1);
+				m2=NODE_OFFSET(c2);
+				node=base;
+				if ((base=ntree_branch_create((m1>m2?m1:m2)+1))) {
+					ntree_node_copy_str(base,node,i);
+					base->nodes[m1]=node;
+					*base_ptr=base;
+					if ((node=ntree_node_shrink(node,i+1))) {
+						base->nodes[m1]=node;
+						if ((node=ntree_leaf_create(s,l))) {
+							base->nodes[m2]=node;
+							return 1;
+						}
+					}
+				}
+				return -1;
+			}
+
+			if (l==0) {
+				if (c1==CHAR_DOT) {
+					// the name begin with dot char, is for domain, trim the node
+					for (j=0;j<base->arr_len;j++) {
+						node=base->nodes[j];
+						if (node&&(node!=&dot_leaf)) ntree_free(node);
+					}
+					base->arr_len=0;
+					if ((base=ntree_node_shrink(base,i+1))) {
+						*base_ptr=base;
+						return 1;
+					}
+					return -1;
+				}
+				if (i+1!=m) {
+					// name shorter than node string, split current node
+					m1=NODE_OFFSET(c1);
+					node=base;
+					if ((base=ntree_branch_create((m1>dot_index?m1:dot_index)+1))) {
+						ntree_node_copy_str(base,node,i);
+						base->nodes[dot_index]=(ntree_node_t *)&dot_leaf;
+						base->nodes[m1]=node;
+						*base_ptr=base;
+						if ((node=ntree_node_shrink(node,i+1))) {
+							base->nodes[m1]=node;
+							return 1;
+						}
+					}
+					return -1;
+				}
+				if (base->arr_len) {
+					// name is same as branch node string
+					if (base->arr_len<=dot_index) {
+						if ((base=ntree_branch_expand(base,dot_index+1))==NULL) return -1;
+						*base_ptr=base;
+						base->nodes[dot_index]=(ntree_node_t *)&dot_leaf;
+					} else {
+						if (base->nodes[dot_index]!=(ntree_node_t *)&dot_leaf) {
+							if (base->nodes[dot_index]) ntree_free(base->nodes[dot_index]);
+							base->nodes[dot_index]=(ntree_node_t *)&dot_leaf;
+						}
+					}
+					return 1;
+				}
+				// duplicate name, skip it
+				return 0;
+			}
 
 			if (i==NTREE_NODE_CHAR_COUNT) {
 				// insert intermedia branch node
 				m1=NODE_OFFSET(c1);
-				m2=NODE_OFFSET(c2);
-				m=m1>m2?m1:m2;
-				node=ntree_branch_create(m+1);
-				if (node==NULL) return -1;
-				ntree_node_copy_str(node,base,NTREE_NODE_CHAR_COUNT);
-				node->nodes[m1]=ntree_node_shrink(base,i+1);
-				*base_ptr=node;
-				if (c1==c2) return ntree_insert(&node->nodes[m],s,--j);
-				node->nodes[m2]=ntree_leaf_create(s,j);
-				return 1;
-			}
-
-			if ((j==0)&&(c1==CHAR_DOT)&&(c2==CHAR_DOT)) {
-				// the name begin with dot char, is for domain, trim the branch
-				for (k=0;k<base->arr_len;k++) {
-					node=base->nodes[k];
-					if (node) ntree_free(node);
+				node=base;
+				if ((base=ntree_branch_create(m1+1))) {
+					ntree_node_copy_str(base,node,NTREE_NODE_CHAR_COUNT);
+					base->nodes[m1]=node;
+					*base_ptr=base;
+					if ((node=ntree_node_shrink(node,i+1))) {
+						base->nodes[m1]=node;
+						base_ptr=&base->nodes[m1];
+						base=node;
+						m-=NTREE_NODE_CHAR_COUNT;
+						i=0;
+						l--;
+						continue;
+					}
 				}
-				base->arr_len=0;
-				node=ntree_node_shrink(base,i+1);
-				*base_ptr=node;
-				return 1;
+				return -1;
 			}
 
-			if ((c1!=c2)||(j==0)) {
-				// name differ with current node string, split current node
-				m1=NODE_OFFSET(c1);
-				m2=NODE_OFFSET(c2);
-				m=m1>m2?m1:m2;
-				node=ntree_branch_create(m+1);
-				if (node==NULL) return -1;
-				for (k=0;k<i;k++) node->str[k]=base->str[k];
-				node->str_len=i;
-				node->nodes[m1]=ntree_node_shrink(base,i+1);
-				node->nodes[m2]=ntree_leaf_create(s,j);
-				*base_ptr=node;
-				return node->nodes[m2]?1:0;
-			}
-		}
-
-		// name longer than node string, travel through child node
-		m=NODE_OFFSET(s[j]);
-		if (base->arr_len<=m) {
-			// enlarge base node
-			if ((base=ntree_branch_expand(base,m+1))==NULL) return -1;
-			*base_ptr=base;
-		}
-		return ntree_insert(&base->nodes[m],s,j);
-	}
-
-	if ((l==0)||((j==0)&&(s[0]==CHAR_DOT))) {
-		if (base->arr_len<=dot_index) {
-			// enlarge base node
-			if ((base=ntree_branch_expand(base,dot_index+1))==NULL) return -1;
-			*base_ptr=base;
-			base->nodes[dot_index]=(ntree_node_t *)&default_leaf;
-		} else if (base->nodes[dot_index]==NULL) {
-			base->nodes[dot_index]=(ntree_node_t *)&default_leaf;
-		} else if (base->nodes[dot_index]!=(ntree_node_t *)&default_leaf) {
-			ntree_free(base->nodes[dot_index]);
-			base->nodes[dot_index]=(ntree_node_t *)&default_leaf;
-		}
-		return 1;
-	}
-
-	m=NODE_OFFSET(s[j]);
-	if (base->arr_len<=m) {
-		// enlarge base node
-		if ((base=ntree_branch_expand(base,m+1))==NULL) return -1;
-		*base_ptr=base;
-	}
-
-	// travel through child node
-	if (base->nodes[m]!=NULL) return ntree_insert(&base->nodes[m],s,j);
-
-	// create new child leaf node
-	base->nodes[m]=ntree_leaf_create(s,j);
-	return base->nodes[m]?1:0;
-}
-
-int ntree_add(ntree_node_t *root,const char *s){
-	int l=0,m;
-
-	// check chars, only limited chars allowed
-	while (s[l]!=0) {
-		if ((s[l]&0x80)||(NODE_OFFSET(s[l])<0)) return -1;
-		l++;
-	}
-	l--;
-	if (s[l]==CHAR_DOT) l--;
-	m=NODE_OFFSET(s[l]);
-
-	if (root->nodes[m]) {
-		return ntree_insert(&root->nodes[m],s,l);
-	} else {
-		root->nodes[m]=ntree_leaf_create(s,l);
-		return root->nodes[m]!=NULL?1:-1;
-	}
-}
-
-int ntree_add_n(ntree_node_t *root,const char *s,const int n){
-	int l,m,ret;
-
-	// check chars, only limited chars allowed
-	for (l=0;l<n;l++)
-		if ((s[l]&0x80)||(NODE_OFFSET(s[l])<0)) return -1;
-
-	if (s[--l]==CHAR_DOT) l--;
-	m=NODE_OFFSET(s[l]);
-
-	if (root->nodes[m]) {
-		ret=ntree_insert(&root->nodes[m],s,l);
-	} else {
-		root->nodes[m]=ntree_leaf_create(s,l);
-		ret=root->nodes[m]?1:-1;
-	}
-	return ret;
-}
-
-int ntree_search(const ntree_node_t *base,const unsigned char *s){
-	int i,m,n=0;
-	unsigned char c;
-	char buf[DNSNAMEBUFSIZE],*p=buf;
-
-	while (*s) {
-		if (n) {
-			*p++=CHAR_DOT;
-			n++;
-		}
-		c=*s++;
-		for (i=0;i<c;i++) *p++=*(char *)s++;
-		n+=c;
-	}
-	p--;
-
-	do {
-		i=0;
-		while (i<base->str_len) {
-			c=*p;
-			if ((c==0)||(base->str[i]!=c)) return 0;
 			i++;
-			p--;
+			l--;
 		}
-		c=*p;
-		if (base->arr_len==0) {
-			// leaf node
-			if ((c==0)||(base->str[base->str_len-1]==CHAR_DOT))
-				return 1;
-			else
-				return 0;
-		}
-		// branch node
-		if (c&0x80) return 0;
-		m=NODE_OFFSET(c);
-		if ((m<0)||(base->nodes[m]==NULL)) return 0;
-		p--;
-		base=base->nodes[m];
-	} while (buf!=p);
 
+		m2=NODE_OFFSET(s[l]);
+		if (base==(ntree_node_t *)&dot_leaf) {
+			if ((base=ntree_branch_create(m2+1))) {
+				base->nodes[dot_index]=(ntree_node_t *)&dot_leaf;
+				*base_ptr=base;
+				if ((node=ntree_leaf_create(s,l))) {
+					base->nodes[m2]=node;
+					return 1;
+				}
+			}
+			return -1;
+		}
+
+		if (base->arr_len==0) {
+			// leaf node, name longer than node string
+			if ((base=ntree_branch_expand(base,(m2>dot_index?m2:dot_index)+1))) {
+				base->nodes[dot_index]=(ntree_node_t *)&dot_leaf;
+				*base_ptr=base;
+				if ((node=ntree_leaf_create(s,l))) {
+					base->nodes[m2]=node;
+					return 1;
+				}
+			}
+			return -1;
+		}
+
+		// branch node, name longer than node string
+		if (base->arr_len<=m2) {
+			if ((base=ntree_branch_expand(base,m2+1))) {
+				*base_ptr=base;
+				if ((node=ntree_leaf_create(s,l))) {
+					base->nodes[m2]=node;
+					return 1;
+				}
+			}
+			return -1;
+		}
+
+		if (base->nodes[m2]==NULL) {
+			if ((node=ntree_leaf_create(s,l))) {
+				base->nodes[m2]=node;
+				return 1;
+			}
+			return -1;
+		}
+
+		// travel through child node
+		base_ptr=&base->nodes[m2];
+		base=base->nodes[m2];
+		l--;
+	}
+}
+
+int ntree_find(const ntree_node_t *base,const unsigned char *s){
+	int i,m,n=0;
+	unsigned char c1=0,c2;
+	char buf[DNSNAMEBUFSIZE],*p;
+
+	p=buf+ntree_name_to_str(buf,s);
+	while (p!=buf) {
+		for (i=0;i<base->str_len;i++) {
+			c1=*--p;
+			if ((c1==0)||(c1!=base->str[i])) return 0;
+		}
+		n+=base->str_len;
+		c2=*--p;
+		if ((c2&0x80)==0) {
+			if (base->arr_len) {        // branch node
+				m=NODE_OFFSET(c2);
+				if ((m>=0)&&(base=base->nodes[m])) {
+					n++;
+					c1=c2;
+					continue;
+				}
+			} else {                // leaf node
+				if ((c2==0)||(c1==CHAR_DOT))
+					return n;
+			}
+		}
+		break;
+	}
 	return 0;
 }
 
 size_t ntree_stat(const ntree_node_t *root){
-	int i,l,level;
+	int i,l,level=0;
 	const ntree_node_t *base,*node,*node_stack[DNSNAMEBUFSIZE];
 	unsigned char offset[DNSNAMEBUFSIZE];
-	size_t n=NODE_SIZE(NTREE_NODES_COUNT)+sizeof(default_leaf);
+	size_t n=NODE_SIZE(NTREE_NODES_COUNT)+sizeof(dot_leaf);
 
-	level=0;
 	node_stack[0]=root;
 	offset[0]=0;
 	do {
@@ -463,12 +492,10 @@ size_t ntree_stat(const ntree_node_t *root){
 		l=base->arr_len;
 		while (i<l) {
 			node=base->nodes[i];
-			if ((node!=NULL)&&(node!=base)&&(node!=&default_leaf)) {
-				if (node->arr_len==0) {
-					// leaf node
+			if ((node!=NULL)&&(node!=base)&&(node!=&dot_leaf)) {
+				if (node->arr_len==0) {        // leaf node
 					n+=ntree_leaf_size(node->str_len);
-				} else {
-					// branch node
+				} else {                // branch node
 					n+=NODE_SIZE(node->arr_len);
 					offset[level]=i+1;
 					level++;

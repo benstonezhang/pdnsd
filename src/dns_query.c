@@ -3060,14 +3060,7 @@ static int auth_ok(query_stat_array q, const unsigned char *name, int thint, dns
  */
 static int use_server(servparm_t *s, const unsigned char *name)
 {
-	int i,n=DA_NEL(s->alist);
-
-	if (s->exc_tree) {
-		if (ntree_search(s->exc_tree, name)) return 0;
-	}
-	if (s->inc_tree) {
-		if (ntree_search(s->inc_tree, name)) return 1;
-	}
+	int i,n=DA_NEL(s->alist),im,em;
 
 	for (i=0;i<n;i++) {
 		slist_t *sl=&DA_INDEX(s->alist,i);
@@ -3076,6 +3069,10 @@ static int use_server(servparm_t *s, const unsigned char *name)
 		if(!lrem && (!sl->exact || !nrem))
 			return sl->rule==C_INCLUDED;
 	}
+
+	im=s->inc_tree?ntree_find(s->inc_tree,name):0;
+	em=s->exc_tree?ntree_find(s->exc_tree,name):0;
+	if (im||em) return im>em?C_INCLUDED:C_EXCLUDED;
 
 	if (s->policy==C_SIMPLE_ONLY || s->policy==C_FQDN_ONLY) {
                 if(rhnsegcnt(name)<=1)
