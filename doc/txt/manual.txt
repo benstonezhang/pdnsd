@@ -1362,8 +1362,9 @@ every line, e.g.:
 .bar
 .my.com
 
-Failure is indicated only when the file cannot be opened, malformed entries
-will be ignored.
+These include entries is organized as a tree for optimized performance when
+searching. Failure is indicated only when the file cannot be opened, malformed
+entries will be ignored.
 
 exclude=string;
 This option adds an entry to the exclusion/inclusion list. If a domain matches
@@ -1389,8 +1390,9 @@ every line, e.g.:
 .bar
 .my.com
 
-Failure is indicated only when the file cannot be opened, malformed entries
-will be ignored.
+These exclude entries is organized as a tree for optimized performance when
+searching. Failure is indicated only when the file cannot be opened, malformed
+entries will be ignored.
 
 
 2.1.3 rr Section
