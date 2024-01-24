@@ -54,7 +54,7 @@
  *       error or times out, the query is retried using UDP.
  * UDP_TCP: UDP, then TCP. If the UDP reply is truncated (i.e. the tc flag is set),
  *       the query is retried using TCP.
- * C_TLS: This is slower than TCP, but with privacy protection.
+ * TLS: This is slower than TCP, but with privacy protection.
  */
 #define M_PRESET UDP_ONLY
 
