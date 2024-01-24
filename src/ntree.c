@@ -138,7 +138,6 @@ static const char chars_offset[]={
 	-1, // 0x7f
 };
 
-static const int node_min_size=sizeof(ntree_node_t);
 static const int dot_index=26;
 static const ntree_node_t dot_leaf={0};
 
@@ -148,10 +147,6 @@ static const ntree_node_t dot_leaf={0};
 #define LEAF_SIZE(size) offsetof(ntree_node_t,str[(size)])
 #define NODE_SIZE(size) offsetof(ntree_node_t,nodes[(size)])
 #define NODE_OFFSET(c)  ((int)chars_offset[(unsigned char)(c)])
-
-static inline int ntree_leaf_size(int size){
-	return size>NTREE_NODE_CHAR_COUNT?(int)LEAF_SIZE(size):node_min_size;
-}
 
 ntree_node_t *ntree_init(){
 	ntree_node_t *root=calloc(1,NODE_SIZE(NTREE_NODES_COUNT));
@@ -191,9 +186,9 @@ void ntree_free(ntree_node_t *root){
 	} while (level>=0);
 }
 
-static inline void ntree_revert_copy_str(char *dst,const char *src,int l){
-	int i=0;
-	while (l) dst[i++]=src[--l];
+static inline void ntree_revert_copy_str(char *dst,const char *src,const int l){
+	int i=0,j=l;
+	while (j) dst[i++]=src[--j];
 }
 
 static inline void ntree_node_copy_str(ntree_node_t *dst,const ntree_node_t *src,const int l){
@@ -237,7 +232,7 @@ static ntree_node_t *ntree_branch_expand(ntree_node_t *node,const int size){
 static ntree_node_t *ntree_leaf_create(const char *s,int l){
 	ntree_node_t *node;
 	if (l) {
-		node=malloc(ntree_leaf_size(l));
+		node=malloc(LEAF_SIZE(l));
 		if (node!=NULL) {
 			node->arr_len=0;
 			node->str_len=l;
@@ -256,7 +251,7 @@ static ntree_node_t *ntree_node_shrink(ntree_node_t *node,int l){
 		for (i=0,k=l;i<j;i++,k++) node->str[i]=node->str[k];
 		node->str_len=j;
 		if ((node->arr_len==0)&&(n>NTREE_NODE_CHAR_COUNT)) {
-			node=realloc(node,ntree_leaf_size(j));
+			node=realloc(node,LEAF_SIZE(j));
 		}
 	} else {
 		if (node->arr_len) {
@@ -494,7 +489,7 @@ size_t ntree_stat(const ntree_node_t *root){
 			node=base->nodes[i];
 			if ((node!=NULL)&&(node!=base)&&(node!=&dot_leaf)) {
 				if (node->arr_len==0) {        // leaf node
-					n+=ntree_leaf_size(node->str_len);
+					n+=LEAF_SIZE(node->str_len);
 				} else {                // branch node
 					n+=NODE_SIZE(node->arr_len);
 					offset[level]=i+1;
