@@ -25,6 +25,10 @@
 #define NTREE_NODE_CHAR_COUNT 6
 
 typedef struct ntree_node {
+	/* bit 7:   if a name end at node string
+	 * bit 6:   reversed
+	 * bit 5-0: length of node array
+	 */
 	unsigned char arr_len;
 	unsigned char str_len;
 	char str[NTREE_NODE_CHAR_COUNT];
