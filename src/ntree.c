@@ -122,16 +122,16 @@ static const char chars_offset[]={
 	-1, // 0x5e
 	-1, // 0x5f
 	-1, // 0x60
-	 0, // 0x61, 'a'
-	 1, // 0x62, 'b'
-	 2, // 0x63, 'c'
-	 3, // 0x64, 'd'
-	 4, // 0x65, 'e'
-	 5, // 0x66, 'f'
-	 6, // 0x67, 'g'
-	 7, // 0x68, 'h'
-	 8, // 0x69, 'i'
-	 9, // 0x6a, 'j'
+	0, // 0x61, 'a'
+	1, // 0x62, 'b'
+	2, // 0x63, 'c'
+	3, // 0x64, 'd'
+	4, // 0x65, 'e'
+	5, // 0x66, 'f'
+	6, // 0x67, 'g'
+	7, // 0x68, 'h'
+	8, // 0x69, 'i'
+	9, // 0x6a, 'j'
 	10, // 0x6b, 'k'
 	11, // 0x6c, 'l'
 	12, // 0x6d, 'm'
@@ -218,7 +218,7 @@ static inline void ntree_node_copy_str(ntree_node_t *dst,const ntree_node_t *src
 	dst->str_len=l;
 }
 
-static int ntree_name_to_str(char *dst,const unsigned char *src){
+static inline int ntree_name_to_str(char *dst,const unsigned char *src){
 	int i,n=0;
 	unsigned char c;
 	while (*src) {
@@ -467,7 +467,7 @@ int ntree_find(const ntree_node_t *base,const unsigned char *s){
 			if (base->arr_len) {        // branch node
 				if ((c1==CHAR_DOT)&&(NODE_NAME_END(base))) return n;
 				m=NODE_OFFSET(c2);
-				if ((m>=0)&&(base=base->nodes[m])) {
+				if ((m>=0)&&(m<NODE_ARRAY_LENGTH(base))&&(base=base->nodes[m])) {
 					n++;
 					c1=c2;
 					continue;
